@@ -19,6 +19,10 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
 		<dependency>
@@ -70,6 +74,32 @@
 	</dependencies>
 	<build>
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<version>3.8.1</version>
+				<executions>
+					<execution>
+						<id>bundle-isolated-hive-driver</id>
+						<phase>generate-resources</phase>
+						<goals><goal>copy</goal></goals>
+						<configuration>
+							<!-- The official standalone jar is a resource, never a Spring runtime dependency. -->
+							<artifactItems>
+								<artifactItem>
+									<groupId>org.apache.hive</groupId>
+									<artifactId>hive-jdbc</artifactId>
+									<version>4.2.0</version>
+									<classifier>standalone</classifier>
+									<type>jar</type>
+									<outputDirectory>${project.build.outputDirectory}/hive-driver</outputDirectory>
+									<destFileName>hive-jdbc-standalone.jar</destFileName>
+								</artifactItem>
+							</artifactItems>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>

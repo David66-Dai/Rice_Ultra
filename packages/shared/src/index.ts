@@ -7,40 +7,43 @@ export type HealthResponse = {
 };
 
 export type HistoryEnvironmentAverages = {
-  lightKlx: number;
-  windSpeedMs: number;
-  rainfallMmH: number;
-  airTemperatureC: number;
-  airHumidityPercent: number;
-  soilNitrogenMgKg: number;
-  soilPhosphorusMgKg: number;
-  soilPotassiumMgKg: number;
-  soilPh: number;
-  soilEcMsCm: number;
+  lightKlx: number | null;
+  windSpeedMs: number | null;
+  rainfallMmH: number | null;
+  airTemperatureC: number | null;
+  airHumidityPercent: number | null;
+  soilTemperatureC: number | null;
+  soilMoisturePercent: number | null;
+  soilNitrogenPpm: number | null;
+  soilPhosphorusPpm: number | null;
+  soilPotassiumPpm: number | null;
+  soilPh: number | null;
+  soilEcMsCm: number | null;
 };
 
 export type HistoryPestDiseaseArchive = {
-  diseaseCount: number;
-  pestDensityPer100Plants: number;
-  affectedAreaPercent: number;
-  riskIndex: number;
-  recognitionConfidencePercent: number;
+  diseaseCount: number | null;
+  pestDensityPer100Plants: number | null;
+  affectedAreaPercent: number | null;
+  riskIndex: number | null;
+  recognitionConfidencePercent: number | null;
 };
 
 export type HistorySpectralArchive = {
-  ndvi: number;
-  ndre: number;
-  gndvi: number;
-  chlorophyllSpad: number;
-  reflectancePercent: number[];
+  ndvi: number | null;
+  ndre: number | null;
+  gndvi: number | null;
+  chlorophyllSpad: number | null;
+  reflectancePercent: (number | null)[] | null;
 };
 
 export type HistoryDayData = {
   date: string;
   stationId: string;
   environment: HistoryEnvironmentAverages;
-  pestDisease: HistoryPestDiseaseArchive;
-  spectrum: HistorySpectralArchive;
+  pestDisease: HistoryPestDiseaseArchive | null;
+  spectrum: HistorySpectralArchive | null;
+  source?: "hive";
 };
 
 export type HistoryDailyResponse = {
@@ -79,11 +82,45 @@ export type DeviceControlRequest = {
   stationId: string;
   device: "pump" | "lamp";
   enabled: boolean;
+  /** Revision last observed from the server; stale commands are rejected. */
+  expectedRevision: number;
 };
 
-export type DeviceControlResponse = DeviceControlRequest & {
+export type DeviceControlResponse = Omit<DeviceControlRequest, "expectedRevision"> & {
   command: string;
   sentAt: string;
+  state: DeviceState;
+};
+
+/** Last successfully sent command, not physical actuator feedback. */
+export type DeviceState = {
+  stationId: string;
+  device: "pump" | "lamp";
+  enabled: boolean | null;
+  revision: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export type PlatformNotification = {
+  id: number;
+  type: "device_control" | "pest_disease";
+  message: string;
+  createdAt: string;
+  stationId: string | null;
+  actorUsername: string | null;
+  actorDisplayName: string | null;
+  device: "pump" | "lamp" | null;
+  enabled: boolean | null;
+};
+
+export type DeviceSyncResponse = {
+  cursor: string;
+  canControl: boolean;
+  available: boolean;
+  devices: DeviceState[];
+  notifications: PlatformNotification[];
+  unreadCount: number;
 };
 
 export type LeafDiagnosisResult = {
@@ -156,3 +193,88 @@ export type ApiErrorBody = {
 
 /** Default local Java API base (Emulator / device may need LAN IP). */
 export const DEFAULT_API_BASE = "http://127.0.0.1:8080";
+
+/* ---------- 基于历史监测证据的 AI 分析 ---------- */
+export type AiGrowthStage = "unknown" | "seedling" | "tillering" | "jointing" | "booting" | "heading" | "filling" | "mature";
+export type AiWindowDays = 7 | 14 | 30;
+export type AiAnalysisRequest = {
+  stationId: string;
+  date: string;
+  windowDays: AiWindowDays;
+  growthStage: AiGrowthStage;
+};
+export type AiEvidenceMetric = {
+  field: string;
+  label: string;
+  unit: string;
+  count: number;
+  missingCount: number;
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+  first: number | null;
+  last: number | null;
+  change: number | null;
+};
+export type AiEvidence = {
+  stationId: string;
+  hiveStation: string;
+  startDate: string;
+  endDate: string;
+  windowDays: AiWindowDays;
+  observedDays: number;
+  missingDates: string[];
+  rawRowCount: number;
+  metrics: AiEvidenceMetric[];
+  daily: { date: string; values: Record<string, number | null> }[];
+  growthStage: string;
+  limitations: string[];
+  legacyContext?: AiLegacyContext;
+};
+export type AiAnalysisResult = {
+  evidence: AiEvidence;
+  weatherAnalysis: string;
+  soilAnalysis: string;
+  riskAnalysis: string;
+  summary: string;
+  workflowRunId: string;
+};
+export type AiAnalysisJob = {
+  id: string;
+  stationId: string;
+  date: string;
+  windowDays: AiWindowDays;
+  status: "queued" | "running" | "succeeded" | "failed";
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
+  result: AiAnalysisResult | null;
+  generatedAt: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+  archiveId: string | null;
+  archivePath: string | null;
+};
+export type AiAnalysisListResponse = AiAnalysisJob[];
+export type AiStatusResponse = { configured: boolean; storageConfigured?: boolean };
+
+export type AiLegacyContext = {
+  source: "hive_legacy";
+  stationId: string;
+  disease: {
+    available: boolean;
+    sourceTable: string;
+    referenceDate: string | null;
+    matchType: "exact" | "latest_prior" | "missing";
+    values: { field: string; label: string; unit: string; value: string | null }[];
+  };
+  yield: {
+    available: boolean;
+    sourceTable: string;
+    referenceYear: number | null;
+    season: string;
+    matchType: "exact_year" | "latest_prior" | "missing";
+    baselineKgPerMu: number | null;
+  };
+  limitations: string[];
+};

@@ -47,6 +47,6 @@ public class AdminBootstrap implements ApplicationRunner {
 		user.setEnabled(true);
 		users.save(user);
 
-		log.warn("已创建初始管理员账号 [{}]，请尽快修改 app.auth.bootstrap-admin.password 或数据库中的密码", user.getUsername());
+		log.warn("已创建初始管理员账号 [{}]；修改已有账号密码请使用 create-user -Update，修改 bootstrap 配置不会更新已有账号", user.getUsername());
 	}
 }

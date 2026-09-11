@@ -1,0 +1,56 @@
+{
+  "stationId": "S01",
+  "hiveStation": "point_1",
+  "startDate": "2026-09-07",
+  "endDate": "2026-09-09",
+  "windowDays": 3,
+  "observedDays": 2,
+  "missingDates": ["2026-09-08"],
+  "rawRowCount": 3,
+  "metrics": [
+    {"field": "light_lux", "label": "光照强度", "unit": "lux", "count": 2, "missingCount": 1, "mean": 12000, "min": 10000, "max": 14000, "first": 10000, "last": 14000, "change": 4000},
+    {"field": "temperature_celsius", "label": "空气温度", "unit": "°C", "count": 2, "missingCount": 1, "mean": 27, "min": 26, "max": 28, "first": 26, "last": 28, "change": 2},
+    {"field": "humidity_percent", "label": "空气相对湿度", "unit": "%", "count": 1, "missingCount": 2, "mean": 80, "min": 80, "max": 80, "first": 80, "last": null, "change": null},
+    {"field": "wind_speed_m_s", "label": "风速", "unit": "m/s", "count": 2, "missingCount": 1, "mean": 0.6, "min": 0, "max": 1.2, "first": 1.2, "last": 0, "change": -1.2},
+    {"field": "soil_temperature_celsius", "label": "土壤温度", "unit": "°C", "count": 2, "missingCount": 1, "mean": 25.5, "min": 25, "max": 26, "first": 25, "last": 26, "change": 1},
+    {"field": "soil_moisture_percent", "label": "土壤湿度", "unit": "%", "count": 2, "missingCount": 1, "mean": 45, "min": 40, "max": 50, "first": 40, "last": 50, "change": 10},
+    {"field": "ph", "label": "土壤酸碱度", "unit": "pH", "count": 2, "missingCount": 1, "mean": 6.3, "min": 6.2, "max": 6.4, "first": 6.2, "last": 6.4, "change": 0.2},
+    {"field": "electrical_conductivity_ds_m", "label": "土壤电导率", "unit": "dS/m", "count": 2, "missingCount": 1, "mean": 0.6, "min": 0.5, "max": 0.7, "first": 0.5, "last": 0.7, "change": 0.2},
+    {"field": "nitrogen_concentration_ppm", "label": "土壤氮浓度", "unit": "ppm", "count": 2, "missingCount": 1, "mean": 22, "min": 20, "max": 24, "first": 20, "last": 24, "change": 4},
+    {"field": "phosphorus_concentration_ppm", "label": "土壤磷浓度", "unit": "ppm", "count": 1, "missingCount": 2, "mean": 8, "min": 8, "max": 8, "first": null, "last": 8, "change": null},
+    {"field": "potassium_concentration_ppm", "label": "土壤钾浓度", "unit": "ppm", "count": 1, "missingCount": 2, "mean": 30, "min": 30, "max": 30, "first": 30, "last": null, "change": null}
+  ],
+  "daily": [
+    {"date": "2026-09-07", "values": {"light_lux": 10000, "temperature_celsius": 26, "humidity_percent": 80, "wind_speed_m_s": 1.2, "soil_temperature_celsius": 25, "soil_moisture_percent": 40, "ph": 6.2, "electrical_conductivity_ds_m": 0.5, "nitrogen_concentration_ppm": 20, "phosphorus_concentration_ppm": null, "potassium_concentration_ppm": 30}},
+    {"date": "2026-09-08", "values": {"light_lux": null, "temperature_celsius": null, "humidity_percent": null, "wind_speed_m_s": null, "soil_temperature_celsius": null, "soil_moisture_percent": null, "ph": null, "electrical_conductivity_ds_m": null, "nitrogen_concentration_ppm": null, "phosphorus_concentration_ppm": null, "potassium_concentration_ppm": null}},
+    {"date": "2026-09-09", "values": {"light_lux": 14000, "temperature_celsius": 28, "humidity_percent": null, "wind_speed_m_s": 0, "soil_temperature_celsius": 26, "soil_moisture_percent": 50, "ph": 6.4, "electrical_conductivity_ds_m": 0.7, "nitrogen_concentration_ppm": 24, "phosphorus_concentration_ppm": 8, "potassium_concentration_ppm": null}}
+  ],
+  "growthStage": "unknown",
+  "legacyContext": {
+    "source": "hive_legacy",
+    "stationId": "S01",
+    "disease": {
+      "available": false,
+      "sourceTable": "farm.pest_data",
+      "referenceDate": null,
+      "matchType": "missing",
+      "values": []
+    },
+    "yield": {
+      "available": false,
+      "sourceTable": "farm.rice_yield",
+      "referenceYear": null,
+      "season": "firstcrop",
+      "matchType": "missing",
+      "baselineKgPerMu": null
+    },
+    "limitations": ["本测试样例未提供匹配的旧病虫记录或产量基线。"]
+  },
+  "limitations": [
+    "本文件是离线契约测试样例，所有数值均为测试数据，不是实际农田观测。",
+    "2026-09-08 无归档；气象和土壤部分指标存在缺失。",
+    "日内重复行先取有效均值，再按日等权统计；缺少采样时刻和传感器校准记录。",
+    "无当前病虫调查、图像识别、实测产量、降雨、天气预报、品种、田间水位或管理记录。",
+    "生育期未提供；本样例不携带旧病虫害或产量资料，不能生成对应数值。"
+  ]
+}

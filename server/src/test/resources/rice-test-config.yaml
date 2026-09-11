@@ -1,0 +1,23 @@
+spring:
+  profiles:
+    default: dev
+  datasource:
+    url: "jdbc:h2:mem:rice_test;MODE=MySQL;DB_CLOSE_DELAY=-1"
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+app:
+  auth:
+    jwt-secret: ""
+    bootstrap-admin:
+      enabled: false
+      password: ""
+  realtime:
+    redis:
+      enabled: false
+    serial:
+      enabled: false

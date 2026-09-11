@@ -1,0 +1,135 @@
+# 数智稻安统一配置。复制为 config.yaml 后填写本机值；实际配置不要提交。
+# RICE_CONFIG_PATH 可指定另一份 YAML。修改后重启对应服务。
+# Spring 原生键直接绑定 Java；Python 只读取首文档 app.inference。
+spring:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 1
+      username: ""
+      password: ""
+      connect-timeout: 1s
+      timeout: 2s
+      repositories:
+        enabled: false
+  profiles:
+    default: mysql
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+server:
+  port: 8080
+
+web:
+  # 仅由 Vite 开发服务器读取，不会发送给浏览器。
+  dev-host: "0.0.0.0"
+  dev-port: 5173
+  api-host: "127.0.0.1"
+
+app:
+  devices:
+    # 仅列出的登录用户名可控制设备；空列表默认禁止所有人（包括 ADMIN）。
+    # 例如 ["operator1", "operator2"]；修改后重启后端。
+    control-users: []
+  hdfs:
+    # WebHDFS（NameNode HTTP 端口）；报告按 point_N/output_yyyyMMdd_HHmm.json 保存。
+    web-url: "http://127.0.0.1:9870"
+    user: ""
+    base-path: "/rice/output"
+    connect-timeout-seconds: 5
+    timeout-seconds: 30
+    data-node-host-overrides: {}
+  dify:
+    # 导入 docs/dify 中的新版工作流并发布后填写该应用的 API 密钥。
+    base-url: "http://localhost/v1"
+    api-key: ""
+    connect-timeout-seconds: 5
+    timeout-seconds: 180
+  hive:
+    # HiveServer2 连接信息；表名与字段映射由后端代码维护。
+    url: "jdbc:hive2://127.0.0.1:10000/farm"
+    username: ""
+    password: ""
+    query-timeout-seconds: 30
+    socket-timeout-ms: 45000
+  inference:
+    host: "127.0.0.1"
+    port: 8001
+    reload: true
+    # 部署在其他机器时可直接改成完整 URL。
+    base-url: "http://${app.inference.host}:${app.inference.port}"
+    cors:
+      allowed-origins: ["*"]
+  realtime:
+    redis:
+      enabled: false
+      device-id: environment_platform_01
+      freshness-seconds: 30
+      retry-delay-ms: 1000
+    serial:
+      # 复制示例后按硬件情况开启；dev 模式强制在下文覆盖为 false。
+      enabled: false
+      port: "COM4"
+      baud-rate: 9600
+      station-id: "S01"
+    weather:
+      # 留空保留现有公网 IP 定位行为；填写后使用农田固定坐标。
+      latitude: ""
+      longitude: ""
+  cors:
+    allowed-origins: "http://localhost:${web.dev-port},http://127.0.0.1:${web.dev-port},http://localhost:8081"
+    allowed-origin-patterns: "http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://192.168.*:*,http://172.*:*"
+  auth:
+    jwt-secret: ""
+    access-token-ttl: "2h"
+    remember-me-ttl: "30d"
+    max-failed-attempts: 5
+    lock-duration: "15m"
+    bootstrap-admin:
+      # 仅用户表为空时创建账号，修改这里不会修改已有用户密码。
+      enabled: false
+      username: "admin"
+      password: ""
+      display-name: "系统管理员"
+
+---
+# 默认使用 MySQL；凭据可通过 SPRING_DATASOURCE_* 环境变量覆盖。
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: "jdbc:mysql://127.0.0.1:3306/smart_rice_security?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
+    username: ""
+    password: ""
+    driver-class-name: "com.mysql.cj.jdbc.Driver"
+  jpa:
+    properties:
+      hibernate:
+        dialect: "org.hibernate.dialect.MySQLDialect"
+
+---
+# 用 --spring.profiles.active=dev 或 SPRING_PROFILES_ACTIVE=dev 启用。
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: "jdbc:h2:mem:smart_rice_security;MODE=MySQL;DB_CLOSE_DELAY=-1"
+    driver-class-name: "org.h2.Driver"
+    username: "sa"
+    password: ""
+  jpa:
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+app:
+  realtime:
+    redis:
+      enabled: false
+    serial:
+      enabled: false

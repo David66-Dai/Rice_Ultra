@@ -3,11 +3,11 @@
 -- 执行：mysql -uroot -p < server/sql/init.sql
 -- =====================================================================
 
-CREATE DATABASE IF NOT EXISTS smart_rice_security
+CREATE DATABASE IF NOT EXISTS rice_ultra
   DEFAULT CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
-USE smart_rice_security;
+USE rice_ultra;
 
 -- ---------------------------------------------------------------------
 -- 登录账号（无注册功能，账号由管理员在库里维护）
@@ -46,44 +46,7 @@ CREATE TABLE IF NOT EXISTS remember_me_token (
   CONSTRAINT fk_remember_me_token_user FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ---------------------------------------------------------------------
--- 历史日数据：环境/土壤日均值、病虫害识别与多光谱归档
--- record_date + station_id 唯一，保证导入脚本可安全重复执行
--- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS historical_daily_data (
-  id                              BIGINT       NOT NULL AUTO_INCREMENT,
-  record_date                     DATE         NOT NULL,
-  station_id                      VARCHAR(8)   NOT NULL,
-  avg_light_klx                   DOUBLE       NOT NULL,
-  avg_wind_speed_m_s              DOUBLE       NOT NULL,
-  avg_rainfall_mm_h               DOUBLE       NOT NULL,
-  avg_air_temperature_c           DOUBLE       NOT NULL,
-  avg_air_humidity_percent        DOUBLE       NOT NULL,
-  avg_soil_nitrogen_mg_kg         DOUBLE       NOT NULL,
-  avg_soil_phosphorus_mg_kg       DOUBLE       NOT NULL,
-  avg_soil_potassium_mg_kg        DOUBLE       NOT NULL,
-  avg_soil_ph                     DOUBLE       NOT NULL,
-  avg_soil_ec_ms_cm               DOUBLE       NOT NULL,
-  disease_count                   INT          NOT NULL,
-  pest_density_per_100_plants     DOUBLE       NOT NULL,
-  affected_area_percent           DOUBLE       NOT NULL,
-  pest_disease_risk_index         DOUBLE       NOT NULL,
-  recognition_confidence_percent  DOUBLE       NOT NULL,
-  ndvi                            DOUBLE       NOT NULL,
-  ndre                            DOUBLE       NOT NULL,
-  gndvi                           DOUBLE       NOT NULL,
-  chlorophyll_spad                DOUBLE       NOT NULL,
-  reflectance_450nm_percent       DOUBLE       NOT NULL,
-  reflectance_550nm_percent       DOUBLE       NOT NULL,
-  reflectance_650nm_percent       DOUBLE       NOT NULL,
-  reflectance_720nm_percent       DOUBLE       NOT NULL,
-  reflectance_800nm_percent       DOUBLE       NOT NULL,
-  reflectance_900nm_percent       DOUBLE       NOT NULL,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_history_date_station (record_date, station_id),
-  KEY idx_history_station_date (station_id, record_date),
-  KEY idx_history_record_date (record_date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- 历史环境数据由 Hive 查询，本脚本只管理登录和实时采集数据。
 
 -- ---------------------------------------------------------------------
 -- 当天实时传感器时序数据（由后续串口采集服务写入，不填充假数据）
@@ -97,6 +60,8 @@ CREATE TABLE IF NOT EXISTS realtime_sensor_reading (
   rainfall_mm_h               DOUBLE       NULL,
   air_temperature_c           DOUBLE       NULL,
   air_humidity_percent        DOUBLE       NULL,
+  soil_temperature_c          DOUBLE       NULL,
+  soil_moisture_percent       DOUBLE       NULL,
   soil_nitrogen_mg_kg         DOUBLE       NULL,
   soil_phosphorus_mg_kg       DOUBLE       NULL,
   soil_potassium_mg_kg        DOUBLE       NULL,
@@ -108,13 +73,40 @@ CREATE TABLE IF NOT EXISTS realtime_sensor_reading (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- 初始管理员：admin / SmartRice@2026（首次登录后请立刻修改）
--- 服务启动时若用户表为空也会按 application.properties 中
--- app.auth.bootstrap-admin.* 自动创建，这里的 INSERT 可按需保留或删除。
--- 自行生成哈希：new BCryptPasswordEncoder().encode("新密码")，前面加 {bcrypt}
+-- 首次账号由服务启动时读取 conf/config.yaml 中 app.auth.bootstrap-admin.* 创建。
+-- 示例默认不启用管理员初始化；请填写本机配置或使用 create-user.cmd。
+-- 已有账号使用 create-user.cmd -Update 修改；这里仅建表，不预置固定密码。
 -- ---------------------------------------------------------------------
-INSERT INTO user_account (username, password_hash, display_name, role, enabled, failed_attempts, created_at, updated_at)
-SELECT 'admin',
-       '{bcrypt}$2a$10$ep3aPAlMBDHWOro.VMCFo.HZAjLQh8DYtM0tRwtz1VRVDdLt6UJ0u',
-       '系统管理员', 'ADMIN', b'1', 0, NOW(6), NOW(6)
-WHERE NOT EXISTS (SELECT 1 FROM user_account WHERE username = 'admin');
+
+-- Redis delivery queue; completed rows are removed after Redis acknowledgement.
+CREATE TABLE IF NOT EXISTS redis_pending_sample (
+  id VARCHAR(36) NOT NULL,
+  device_id VARCHAR(128) NOT NULL,
+  sampled_at DATETIME(6) NOT NULL,
+  started_at DATETIME(6) NOT NULL,
+  payload VARCHAR(4096) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_redis_pending_time (sampled_at, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Global activity feed. Device-control history remains visible after server restart.
+CREATE TABLE IF NOT EXISTS platform_notification (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  type VARCHAR(32) NOT NULL,
+  message VARCHAR(2000) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  station_id VARCHAR(8) NULL,
+  actor_username VARCHAR(64) NULL,
+  actor_display_name VARCHAR(64) NULL,
+  device VARCHAR(16) NULL,
+  enabled BIT(1) NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Read positions belong to each user; reading never removes another user's notification.
+CREATE TABLE IF NOT EXISTS notification_read_state (
+  user_id BIGINT NOT NULL,
+  through_id BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_notification_read_user FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

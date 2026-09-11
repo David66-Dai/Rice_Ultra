@@ -1,12 +1,13 @@
 package com.smartrice.server.history;
 
-import com.smartrice.server.history.HistoryDailyResponse.EnvironmentAverages;
 import com.smartrice.server.history.HistoryDailyResponse.HistoryDayData;
-import com.smartrice.server.history.HistoryDailyResponse.PestDiseaseArchive;
-import com.smartrice.server.history.HistoryDailyResponse.SpectralArchive;
+import java.sql.SQLException;
 import java.time.LocalDate;
-import java.util.List;
+import java.time.ZoneId;
+import java.util.Map;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -14,99 +15,56 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class HistoryDataService {
 
+	private static final Logger log = LoggerFactory.getLogger(HistoryDataService.class);
 	private static final Pattern STATION_ID = Pattern.compile("S(?:0[1-9]|10)");
+	private static final ZoneId FIELD_ZONE = ZoneId.of("Asia/Shanghai");
+	private final HiveHistoryRepository repository;
 
-	private final HistoricalDailyDataRepository repository;
-
-	public HistoryDataService(HistoricalDailyDataRepository repository) {
+	public HistoryDataService(HiveHistoryRepository repository) {
 		this.repository = repository;
 	}
 
 	public HistoryRangeResponse range(String stationId) {
-		String normalizedStation = validateStation(stationId);
-		LocalDate today = LocalDate.now();
-		HistoricalDailyData first = repository
-			.findFirstByStationIdAndRecordDateLessThanEqualOrderByRecordDateAsc(normalizedStation, today)
-			.orElseThrow(() -> notFound(normalizedStation, null));
-		HistoricalDailyData last = repository
-			.findFirstByStationIdAndRecordDateLessThanEqualOrderByRecordDateDesc(normalizedStation, today)
-			.orElseThrow(() -> notFound(normalizedStation, null));
-		long count = repository.countByStationIdAndRecordDateLessThanEqual(normalizedStation, today);
-		return new HistoryRangeResponse(normalizedStation, first.recordDate, last.recordDate, count);
+		String station = validateStation(stationId);
+		try {
+			return repository.range(station, LocalDate.now(FIELD_ZONE))
+				.orElseThrow(() -> notFound(station, null));
+		} catch (SQLException ex) {
+			throw unavailable(ex);
+		}
 	}
 
-	public HistoryDailyResponse daily(String stationId, LocalDate recordDate) {
-		String normalizedStation = validateStation(stationId);
-		if (recordDate == null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "date 不能为空");
+	public HistoryDailyResponse daily(String stationId, LocalDate date) {
+		String station = validateStation(stationId);
+		if (date == null || date.isAfter(LocalDate.now(FIELD_ZONE))) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "日期不能为空，且不能查询未来日期");
 		}
-		if (recordDate.isAfter(LocalDate.now())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能查询未来日期的历史数据");
+		try {
+			Map<LocalDate, HistoryDayData> days = repository.days(station, date);
+			HistoryDayData current = days.get(date);
+			if (current == null) throw notFound(station, date);
+			return new HistoryDailyResponse(current, days.get(date.minusDays(1)));
+		} catch (SQLException ex) {
+			throw unavailable(ex);
 		}
-
-		HistoricalDailyData current = repository
-			.findByStationIdAndRecordDate(normalizedStation, recordDate)
-			.orElseThrow(() -> notFound(normalizedStation, recordDate));
-		HistoryDayData previous = repository
-			.findByStationIdAndRecordDate(normalizedStation, recordDate.minusDays(1))
-			.map(HistoryDataService::toDayData)
-			.orElse(null);
-		return new HistoryDailyResponse(toDayData(current), previous);
 	}
 
 	private static String validateStation(String stationId) {
-		String normalized = stationId == null ? "" : stationId.trim().toUpperCase();
+		String normalized = stationId == null ? "" : stationId.trim().toUpperCase(java.util.Locale.ROOT);
 		if (!STATION_ID.matcher(normalized).matches()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "stationId 必须为 S01-S10");
 		}
 		return normalized;
 	}
 
-	private static ResponseStatusException notFound(String stationId, LocalDate recordDate) {
-		String suffix = recordDate == null ? "" : " 在 " + recordDate;
-		return new ResponseStatusException(
-			HttpStatus.NOT_FOUND,
-			stationId + suffix + " 没有历史数据"
-		);
+	private static ResponseStatusException notFound(String station, LocalDate date) {
+		return new ResponseStatusException(HttpStatus.NOT_FOUND,
+			station + (date == null ? "" : " 在 " + date) + " 没有历史数据");
 	}
 
-	private static HistoryDayData toDayData(HistoricalDailyData data) {
-		return new HistoryDayData(
-			data.recordDate,
-			data.stationId,
-			new EnvironmentAverages(
-				data.avgLightKlx,
-				data.avgWindSpeedMs,
-				data.avgRainfallMmH,
-				data.avgAirTemperatureC,
-				data.avgAirHumidityPercent,
-				data.avgSoilNitrogenMgKg,
-				data.avgSoilPhosphorusMgKg,
-				data.avgSoilPotassiumMgKg,
-				data.avgSoilPh,
-				data.avgSoilEcMsCm
-			),
-			new PestDiseaseArchive(
-				data.diseaseCount,
-				data.pestDensityPer100Plants,
-				data.affectedAreaPercent,
-				data.pestDiseaseRiskIndex,
-				data.recognitionConfidencePercent
-			),
-			new SpectralArchive(
-				data.ndvi,
-				data.ndre,
-				data.gndvi,
-				data.chlorophyllSpad,
-				List.of(
-					data.reflectance450nmPercent,
-					data.reflectance550nmPercent,
-					data.reflectance650nmPercent,
-					data.reflectance720nmPercent,
-					data.reflectance800nmPercent,
-					data.reflectance900nmPercent
-				)
-			)
-		);
+	private static ResponseStatusException unavailable(SQLException ex) {
+		log.warn("Hive 历史数据查询失败，SQLState={}，errorCode={}", ex.getSQLState(), ex.getErrorCode());
+		return new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+			"Hive 历史数据库暂不可用，请检查服务端连接配置或稍后重试");
 	}
 }

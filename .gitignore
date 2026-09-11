@@ -2,6 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
+.hintrc
 
 # Build
 dist/
@@ -16,6 +17,8 @@ target/
 out/
 
 # Env & secrets
+/conf/config.yaml
+/conf/config.local.yaml
 .env
 .env.*
 !.env.example

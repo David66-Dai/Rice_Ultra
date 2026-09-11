@@ -142,9 +142,9 @@ public class AppProperties {
 
 	/** 系统没有注册功能：首次启动且用户表为空时自动创建的管理员账号。 */
 	public static class BootstrapAdmin {
-		private boolean enabled = true;
+		private boolean enabled = false;
 		private String username = "admin";
-		private String password = "SmartRice@2026";
+		private String password = "";
 		private String displayName = "系统管理员";
 
 		public boolean isEnabled() {
