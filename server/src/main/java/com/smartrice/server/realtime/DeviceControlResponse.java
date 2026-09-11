@@ -7,6 +7,7 @@ public record DeviceControlResponse(
 	String device,
 	boolean enabled,
 	String command,
-	Instant sentAt
+	Instant sentAt,
+	DeviceState state
 ) {
 }

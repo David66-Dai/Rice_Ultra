@@ -1,0 +1,1 @@
+export const REALTIME_SYNC_INTERVAL_MS = 3_000

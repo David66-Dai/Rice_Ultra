@@ -1,17 +1,17 @@
 package com.smartrice.server.tools;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.smartrice.server.config.RiceConfiguration;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -38,7 +38,7 @@ public final class CreateUserTool {
 			System.err.println(ex.getMessage());
 			code = 2;
 		} catch (Exception ex) {
-			System.err.println("创建账号失败：" + ex.getMessage());
+			System.err.println("创建账号失败，请检查数据库连接、表结构和统一配置。");
 			code = 1;
 		}
 		System.exit(code);
@@ -52,7 +52,8 @@ public final class CreateUserTool {
 		}
 		request.validate();
 
-		DbConfig db = DbConfig.load();
+		DbConfig db = DbConfig.load(RiceConfiguration.loadEnvironment(request.configurationArgs.toArray(String[]::new)),
+			System.getenv());
 		try (Connection conn = db.open()) {
 			conn.setAutoCommit(false);
 			Long existingId = findUserId(conn, request.username);
@@ -137,7 +138,8 @@ public final class CreateUserTool {
 			  --disabled           创建为禁用状态
 			  --help, -h           显示本说明
 
-			数据库：读取 server/src/main/resources/application-mysql.properties
+			配置：从当前目录向上查找 conf/config.yaml；RICE_CONFIG_PATH 可指定文件。
+			支持 --rice.config.path=<文件>、--spring.profiles.active=dev 及 --spring.* 配置覆盖。
 			也可用环境变量覆盖：CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME / CREATE_USER_DB_PASSWORD
 			""");
 	}
@@ -150,6 +152,7 @@ public final class CreateUserTool {
 		String password;
 		String displayName;
 		String role = "ADMIN";
+		final List<String> configurationArgs = new ArrayList<>();
 
 		static Request parse(String[] args) {
 			Request req = fromEnv();
@@ -157,6 +160,15 @@ public final class CreateUserTool {
 			while (i < args.length) {
 				String arg = args[i];
 				if (arg == null || arg.isBlank()) {
+					i++;
+					continue;
+				}
+				if (arg.startsWith("--spring.") || arg.equals("--rice.config.path") || arg.startsWith("--rice.config.path=")) {
+					if (arg.contains("=")) {
+						req.configurationArgs.add(arg);
+					} else {
+						req.configurationArgs.add(arg + "=" + requireValue(args, ++i, arg));
+					}
 					i++;
 					continue;
 				}
@@ -288,66 +300,34 @@ public final class CreateUserTool {
 			try {
 				return DriverManager.getConnection(url, props);
 			} catch (SQLException ex) {
-				throw new SQLException("无法连接 MySQL（" + url + "）：" + ex.getMessage()
-					+ "。请确认服务已启动，且已执行 server/sql/init.sql", ex);
+				throw new SQLException("无法连接数据库，请检查统一配置及数据库服务，并确认已初始化账号表。");
 			}
 		}
 
-		static DbConfig load() {
-			String url = trimToNull(System.getenv("CREATE_USER_DB_URL"));
-			String username = trimToNull(System.getenv("CREATE_USER_DB_USERNAME"));
-			String password = System.getenv("CREATE_USER_DB_PASSWORD");
-
-			Map<String, String> file = readMysqlProperties();
-			if (url == null) {
-				url = file.get("spring.datasource.url");
+		static DbConfig load(Environment environment, Map<String, String> overrides) {
+			String url = trimToNull(overrides.get("CREATE_USER_DB_URL"));
+			String username = trimToNull(overrides.get("CREATE_USER_DB_USERNAME"));
+			String password = overrides.get("CREATE_USER_DB_PASSWORD");
+			try {
+				if (url == null) {
+					url = trimToNull(environment.getProperty("spring.datasource.url"));
+				}
+				if (username == null) {
+					username = trimToNull(environment.getProperty("spring.datasource.username"));
+				}
+				if (password == null) {
+					password = environment.getProperty("spring.datasource.password");
+				}
 			}
-			if (username == null) {
-				username = file.get("spring.datasource.username");
-			}
-			if (password == null) {
-				password = file.get("spring.datasource.password");
+			catch (RuntimeException ex) {
+				// Placeholder errors can include the full configured URL or password.
+				throw new IllegalArgumentException("无法解析数据库配置，请检查统一配置中的占位符和环境变量。");
 			}
 			if (url == null || username == null) {
 				throw new IllegalArgumentException(
-					"未找到数据库配置。请在 server 目录运行，或设置 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME");
+					"统一配置缺少数据库连接信息，请检查当前 profile 或 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME。");
 			}
 			return new DbConfig(url, username, password == null ? "" : password);
-		}
-
-		private static Map<String, String> readMysqlProperties() {
-			Map<String, String> values = new LinkedHashMap<>();
-			for (Path path : candidatePropertyFiles()) {
-				if (!Files.isRegularFile(path)) {
-					continue;
-				}
-				try {
-					for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-						String trimmed = line.trim();
-						if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-							continue;
-						}
-						int eq = trimmed.indexOf('=');
-						if (eq <= 0) {
-							continue;
-						}
-						values.put(trimmed.substring(0, eq).trim(), trimmed.substring(eq + 1).trim());
-					}
-					return values;
-				} catch (Exception ex) {
-					throw new IllegalArgumentException("读取 " + path + " 失败：" + ex.getMessage(), ex);
-				}
-			}
-			return values;
-		}
-
-		private static Path[] candidatePropertyFiles() {
-			Path cwd = Path.of("").toAbsolutePath();
-			return new Path[] {
-				cwd.resolve("src/main/resources/application-mysql.properties"),
-				cwd.resolve("server/src/main/resources/application-mysql.properties"),
-				cwd.resolve("../src/main/resources/application-mysql.properties"),
-			};
 		}
 
 		private static String trimToNull(String value) {

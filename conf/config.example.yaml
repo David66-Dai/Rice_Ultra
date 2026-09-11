@@ -21,7 +21,7 @@ spring:
     open-in-view: false
 
 server:
-  port: 8080
+  port: 8185
 
 web:
   # 仅由 Vite 开发服务器读取，不会发送给浏览器。
@@ -34,6 +34,20 @@ app:
     # 仅列出的登录用户名可控制设备；空列表默认禁止所有人（包括 ADMIN）。
     # 例如 ["operator1", "operator2"]；修改后重启后端。
     control-users: []
+  astrbot-control:
+    # AstrBot 使用独立的受限集成令牌，只能访问下面两个设备接口；至少 32 个字符。
+    enabled: false
+    api-token: ""
+    # 测试命令只跳过聊天端二次确认，仍校验身份映射、账号、设备白名单和状态版本。
+    allow-test-control: false
+    confirmation-ttl: "2m"
+    max-duration-seconds: 300
+    # 同时精确匹配会话 UMO 和发送者 ID，再映射到已有平台登录用户名。
+    identities: []
+    # identities:
+    #   - umo: "从 /agri_control_status 复制"
+    #     sender-id: "从 /agri_control_status 复制"
+    #     username: "admin"
   hdfs:
     # WebHDFS（NameNode HTTP 端口）；报告按 point_N/output_yyyyMMdd_HHmm.json 保存。
     web-url: "http://127.0.0.1:9870"

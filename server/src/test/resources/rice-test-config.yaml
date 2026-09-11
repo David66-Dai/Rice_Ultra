@@ -11,6 +11,10 @@ spring:
       ddl-auto: create-drop
     open-in-view: false
 app:
+  astrbot-control:
+    enabled: false
+    api-token: ""
+    identities: []
   auth:
     jwt-secret: ""
     bootstrap-admin:

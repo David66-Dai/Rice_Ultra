@@ -288,6 +288,25 @@
   box-shadow: 0 0 0 2px rgba(55, 214, 250, 0.08);
 }
 
+.camera-discovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px 12px;
+  color: #8fc3d6;
+  font-size: 11px;
+}
+
+.camera-discovery button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(73, 222, 255, 0.45);
+  color: #d8f7ff;
+  background: #0b335b;
+  cursor: pointer;
+}
+
 .camera-controls__status {
   min-width: 90px;
 }

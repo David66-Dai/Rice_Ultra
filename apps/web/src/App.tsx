@@ -1,11 +1,12 @@
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { useAuth } from './auth/useAuth.ts'
 import { MainDashboard } from './dashboard-v2/MainDashboard.tsx'
+import { DeviceSyncProvider } from './devices/DeviceSyncProvider.tsx'
 import { useButtonClickSound } from './hooks/useButtonClickSound.ts'
 import { LoginPage } from './pages/LoginPage.tsx'
 
 function Screen() {
-  const { status } = useAuth()
+  const { status, user } = useAuth()
 
   if (status === 'booting') {
     return (
@@ -15,7 +16,7 @@ function Screen() {
       </div>
     )
   }
-  return status === 'authenticated' ? <MainDashboard /> : <LoginPage />
+  return status === 'authenticated' ? <DeviceSyncProvider key={user.id}><MainDashboard /></DeviceSyncProvider> : <LoginPage />
 }
 
 function App() {

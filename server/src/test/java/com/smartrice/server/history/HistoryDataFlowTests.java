@@ -1,85 +1,101 @@
 package com.smartrice.server.history;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.smartrice.server.history.HistoryDailyResponse.EnvironmentAverages;
+import com.smartrice.server.history.HistoryDailyResponse.HistoryDayData;
+import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
-@TestPropertySource(properties = "app.auth.bootstrap-admin.enabled=false")
 class HistoryDataFlowTests {
 
-	@Autowired
-	MockMvc mvc;
+	@Autowired MockMvc mvc;
+	@MockitoBean HiveHistoryRepository repository;
+	private static final LocalDate DATE = LocalDate.of(2020, 1, 1);
 
-	@Autowired
-	HistoricalDailyDataRepository repository;
-
-	@Test
-	void seedImportsAllRowsAndFillsMissingModuleFields() {
-		assertThat(repository.count()).isEqualTo(24_570);
-		HistoricalDailyData sample = repository
-			.findByStationIdAndRecordDate("S10", LocalDate.of(2026, 9, 10))
-			.orElseThrow();
-
-		assertThat(sample.avgRainfallMmH).isGreaterThanOrEqualTo(0);
-		assertThat(sample.recognitionConfidencePercent).isBetween(93.0, 98.0);
-		assertThat(sample.ndvi).isBetween(0.72, 0.85);
-		assertThat(sample.reflectance900nmPercent).isPositive();
+	static HistoryDayData sample(LocalDate date) {
+		return new HistoryDayData(date, "S01",
+			new EnvironmentAverages(0.1611, 0.0, null, 4.9, 44.2,
+				118.0, 21.0, 78.0, 6.2, 1.14, 7.1, 29.1),
+			null, null, "hive");
 	}
 
 	@Test
-	void rangeAndDailyEndpointsReturnDatabaseData() throws Exception {
-		mvc.perform(get("/api/history/range")
-				.param("stationId", "S02")
-				.with(jwt()))
+	void rangeAndDailyReturnHiveEnvironmentWithoutInventingOtherArchives() throws Exception {
+		when(repository.range(eq("S01"), any())).thenReturn(Optional.of(new HistoryRangeResponse("S01", DATE, DATE, 1)));
+		when(repository.days("S01", DATE)).thenReturn(Map.of(DATE, sample(DATE)));
+		mvc.perform(get("/api/history/range").param("stationId", "S01").with(jwt()))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.startDate").value("2020-01-01"))
+			.andExpect(jsonPath("$.recordCount").value(1));
+		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", "2020-01-01").with(jwt()))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.stationId").value("S02"))
-			.andExpect(jsonPath("$.startDate").value("2020-01-01"))
-			.andExpect(jsonPath("$.recordCount").isNumber());
-
-		mvc.perform(get("/api/history/daily")
-				.param("stationId", "S02")
-				.param("date", "2026-09-10")
-				.with(jwt()))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.current.stationId").value("S02"))
-			.andExpect(jsonPath("$.current.date").value("2026-09-10"))
-			.andExpect(jsonPath("$.current.environment.soilNitrogenMgKg").isNumber())
-			.andExpect(jsonPath("$.current.pestDisease.riskIndex").isNumber())
-			.andExpect(jsonPath("$.current.spectrum.reflectancePercent.length()").value(6))
-			.andExpect(jsonPath("$.previous.date").value("2026-09-09"));
+			.andExpect(jsonPath("$.current.source").value("hive"))
+			.andExpect(jsonPath("$.current.environment.lightKlx").value(0.1611))
+			.andExpect(jsonPath("$.current.environment.soilNitrogenPpm").value(118))
+			.andExpect(jsonPath("$.current.environment.soilTemperatureC").value(7.1))
+			.andExpect(jsonPath("$.current.environment.soilMoisturePercent").value(29.1))
+			.andExpect(jsonPath("$.current.environment.rainfallMmH").isEmpty())
+			.andExpect(jsonPath("$.current.pestDisease").isEmpty())
+			.andExpect(jsonPath("$.current.spectrum").isEmpty())
+			.andExpect(jsonPath("$.previous").isEmpty());
 	}
 
 	@Test
-	void endpointsRejectInvalidStationAndFutureDate() throws Exception {
-		mvc.perform(get("/api/history/range")
-				.param("stationId", "S11")
-				.with(jwt()))
-			.andExpect(status().isBadRequest());
-
-		mvc.perform(get("/api/history/daily")
-				.param("stationId", "S01")
-				.param("date", LocalDate.now().plusDays(1).toString())
-				.with(jwt()))
-			.andExpect(status().isBadRequest());
+	void returnsOnlyTheActualPreviousDay() throws Exception {
+		LocalDate next = DATE.plusDays(1);
+		when(repository.days("S01", next)).thenReturn(Map.of(DATE, sample(DATE), next, sample(next)));
+		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", next.toString()).with(jwt()))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.previous.date").value(DATE.toString()));
 	}
 
 	@Test
-	void endpointsRequireAuthentication() throws Exception {
-		mvc.perform(get("/api/history/range").param("stationId", "S01"))
-			.andExpect(status().isUnauthorized());
+	void missingHiveDataReturns404WithoutMysqlOrGeneratedFallback() throws Exception {
+		when(repository.range(eq("S01"), any())).thenReturn(Optional.empty());
+		when(repository.days("S01", DATE)).thenReturn(Map.of());
+		mvc.perform(get("/api/history/range").param("stationId", "S01").with(jwt()))
+			.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("history_not_found"));
+		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", DATE.toString()).with(jwt()))
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void hiveFailureIsExplicitAndDoesNotExposeDriverDetails() throws Exception {
+		when(repository.range(eq("S01"), any())).thenThrow(new SQLException("PASSWORD_CANARY jdbc:hive2://private-host"));
+		String body = mvc.perform(get("/api/history/range").param("stationId", "S01").with(jwt()))
+			.andExpect(status().isServiceUnavailable())
+			.andExpect(jsonPath("$.code").value("hive_history_unavailable"))
+			.andReturn().getResponse().getContentAsString();
+		assertThat(body).doesNotContain("PASSWORD_CANARY", "private-host");
+	}
+
+	@Test
+	void rejectsInvalidInputsBeforeQueryingAndRetainsAuthentication() throws Exception {
+		mvc.perform(get("/api/history/range").param("stationId", "S11").with(jwt())).andExpect(status().isBadRequest());
+		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", "bad-date").with(jwt()))
+			.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", LocalDate.now().plusDays(2).toString()).with(jwt()))
+			.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/history/range").param("stationId", "S01")).andExpect(status().isUnauthorized());
+		verifyNoInteractions(repository);
 	}
 }

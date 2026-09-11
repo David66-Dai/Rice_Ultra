@@ -110,3 +110,18 @@ CREATE TABLE IF NOT EXISTS notification_read_state (
   PRIMARY KEY (user_id),
   CONSTRAINT fk_notification_read_user FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Persisted safety timers for AstrBot ON commands. Outstanding rows are stopped on restart.
+CREATE TABLE IF NOT EXISTS astrbot_scheduled_stop (
+  request_id VARCHAR(36) NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  display_name VARCHAR(64) NULL,
+  station_id VARCHAR(8) NOT NULL,
+  device VARCHAR(16) NOT NULL,
+  expected_revision BIGINT NOT NULL,
+  due_at DATETIME(6) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  fingerprint VARCHAR(64) NOT NULL,
+  PRIMARY KEY (request_id),
+  KEY idx_astrbot_stop_status_due (status, due_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -31,6 +31,9 @@ public class RealtimeSensorReading {
 	@Column(name = "sampled_at", nullable = false)
 	Instant sampledAt;
 
+	@jakarta.persistence.Transient
+	Instant startedAt;
+
 	@Column(name = "light_klx")
 	Double lightKlx;
 
@@ -45,6 +48,12 @@ public class RealtimeSensorReading {
 
 	@Column(name = "air_humidity_percent")
 	Double airHumidityPercent;
+
+	@Column(name = "soil_temperature_c")
+	Double soilTemperatureC;
+
+	@Column(name = "soil_moisture_percent")
+	Double soilMoisturePercent;
 
 	@Column(name = "soil_nitrogen_mg_kg")
 	Double soilNitrogenMgKg;

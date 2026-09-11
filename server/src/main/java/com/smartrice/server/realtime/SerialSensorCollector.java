@@ -5,8 +5,8 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.time.Instant;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,12 +20,7 @@ public class SerialSensorCollector implements SmartLifecycle {
 
 	private static final Logger log = LoggerFactory.getLogger(SerialSensorCollector.class);
 	private static final Charset DEVICE_CHARSET = Charset.forName("GBK");
-	private static final Pattern FRAME_PATTERN = Pattern.compile(
-		"当前站点\\s*(\\d+)\\s*(.+?)为[：:]\\s*(.*)", Pattern.CASE_INSENSITIVE
-	);
-	private static final Pattern NUMBER_PATTERN = Pattern.compile("-?\\d+(?:\\.\\d+)?");
-
-	private final RealtimeSensorReadingRepository repository;
+	private final RealtimeSensorIngestionService ingestion;
 	private final WeatherRainfallService rainfallService;
 	private final String portName;
 	private final int baudRate;
@@ -36,12 +31,12 @@ public class SerialSensorCollector implements SmartLifecycle {
 	private Thread worker;
 	private final Object writeLock = new Object();
 
-	public SerialSensorCollector(RealtimeSensorReadingRepository repository,
+	public SerialSensorCollector(RealtimeSensorIngestionService ingestion,
 			WeatherRainfallService rainfallService,
 			@Value("${app.realtime.serial.port:COM4}") String portName,
 			@Value("${app.realtime.serial.baud-rate:9600}") int baudRate,
 			@Value("${app.realtime.serial.station-id:S01}") String configuredStationId) {
-		this.repository = repository;
+		this.ingestion = ingestion;
 		this.rainfallService = rainfallService;
 		this.portName = portName;
 		this.baudRate = baudRate;
@@ -82,6 +77,12 @@ public class SerialSensorCollector implements SmartLifecycle {
 		return true;
 	}
 
+	/** Reports the actual port connection, without opening it or writing any bytes. */
+	public boolean isConnected() {
+		SerialPort port = activePort;
+		return port != null && port.isOpen();
+	}
+
 	public void sendCommand(int commandCode) {
 		byte[] command = {(byte) 0xFA, (byte) commandCode};
 		synchronized (writeLock) {
@@ -111,7 +112,7 @@ public class SerialSensorCollector implements SmartLifecycle {
 			}
 
 			log.info("串口采集已启动: {} / {} / 8N1 / GBK", portName, baudRate);
-			SensorFrameAccumulator accumulator = new SensorFrameAccumulator();
+			SerialSensorFrameParser parser = new SerialSensorFrameParser(configuredStationId);
 			try (BufferedReader reader = new BufferedReader(
 					new InputStreamReader(port.getInputStream(), DEVICE_CHARSET))) {
 				while (running && port.isOpen()) {
@@ -119,10 +120,10 @@ public class SerialSensorCollector implements SmartLifecycle {
 					if (line == null) {
 						break;
 					}
-					parseFrame(line.replace("\u0000", "").trim(), accumulator);
-					if (accumulator.complete()) {
-						saveReading(accumulator);
-						accumulator.clear();
+					RealtimeSensorReading reading = parser.accept(line, Instant.now());
+					if (reading != null) {
+						reading.rainfallMmH = rainfallService.currentHourlyRainfall();
+						ingestion.save(reading);
 					}
 				}
 			}
@@ -141,85 +142,6 @@ public class SerialSensorCollector implements SmartLifecycle {
 		}
 	}
 
-	private void parseFrame(String line, SensorFrameAccumulator accumulator) {
-		Matcher frame = FRAME_PATTERN.matcher(line);
-		if (!frame.find()) {
-			if (!line.isBlank()) {
-				log.debug("忽略无法解析的串口帧: {}", line);
-			}
-			return;
-		}
-
-		int stationNumber = Integer.parseInt(frame.group(1));
-		if (stationNumber < 1 || stationNumber > 10) {
-			log.warn("忽略站点编号超出范围的串口帧: {}", line);
-			return;
-		}
-		Matcher number = NUMBER_PATTERN.matcher(frame.group(3));
-		if (!number.find()) {
-			log.debug("串口帧没有数值: {}", line);
-			return;
-		}
-
-		String stationId = "S%02d".formatted(stationNumber);
-		if (!stationId.equals(configuredStationId)) {
-			log.debug("忽略非配置站点的串口帧: {}，当前只采集 {}", stationId, configuredStationId);
-			return;
-		}
-		String metric = frame.group(2).trim();
-		double value = Double.parseDouble(number.group());
-		accumulator.useStation(stationId);
-
-		if (metric.contains("土壤温度") || metric.contains("土壤湿度")) {
-			return;
-		}
-		if (metric.contains("电导率")) {
-			accumulator.soilEcMsCm = value;
-		}
-		else if (metric.toUpperCase().contains("PH") || metric.contains("酸碱")) {
-			accumulator.soilPh = value;
-		}
-		else if (metric.contains("氮肥")) {
-			accumulator.soilNitrogenMgKg = value;
-		}
-		else if (metric.contains("磷肥")) {
-			accumulator.soilPhosphorusMgKg = value;
-		}
-		else if (metric.contains("钾肥")) {
-			accumulator.soilPotassiumMgKg = value;
-		}
-		else if (metric.contains("光照")) {
-			accumulator.lightKlx = value / 1000;
-		}
-		else if (metric.contains("风速")) {
-			accumulator.windSpeedMs = value;
-		}
-		else if (metric.contains("温度")) {
-			accumulator.airTemperatureC = value;
-		}
-		else if (metric.contains("湿度")) {
-			accumulator.airHumidityPercent = value;
-		}
-	}
-
-	private void saveReading(SensorFrameAccumulator values) {
-		RealtimeSensorReading reading = new RealtimeSensorReading();
-		reading.stationId = values.stationId;
-		reading.sampledAt = Instant.now();
-		reading.lightKlx = values.lightKlx;
-		reading.windSpeedMs = values.windSpeedMs;
-		reading.rainfallMmH = rainfallService.currentHourlyRainfall();
-		reading.airTemperatureC = values.airTemperatureC;
-		reading.airHumidityPercent = values.airHumidityPercent;
-		reading.soilNitrogenMgKg = values.soilNitrogenMgKg;
-		reading.soilPhosphorusMgKg = values.soilPhosphorusMgKg;
-		reading.soilPotassiumMgKg = values.soilPotassiumMgKg;
-		reading.soilPh = values.soilPh;
-		reading.soilEcMsCm = values.soilEcMsCm;
-		repository.save(reading);
-		log.debug("已保存 {} 实时传感器记录，采样时间 {}", reading.stationId, reading.sampledAt);
-	}
-
 	private void pauseBeforeRetry() {
 		if (!running) {
 			return;
@@ -232,49 +154,4 @@ public class SerialSensorCollector implements SmartLifecycle {
 		}
 	}
 
-	private static final class SensorFrameAccumulator {
-		private String stationId;
-		private Double lightKlx;
-		private Double windSpeedMs;
-		private Double airTemperatureC;
-		private Double airHumidityPercent;
-		private Double soilNitrogenMgKg;
-		private Double soilPhosphorusMgKg;
-		private Double soilPotassiumMgKg;
-		private Double soilPh;
-		private Double soilEcMsCm;
-
-		void useStation(String nextStationId) {
-			if (stationId != null && !stationId.equals(nextStationId)) {
-				clear();
-			}
-			stationId = nextStationId;
-		}
-
-		boolean complete() {
-			return stationId != null
-				&& lightKlx != null
-				&& windSpeedMs != null
-				&& airTemperatureC != null
-				&& airHumidityPercent != null
-				&& soilNitrogenMgKg != null
-				&& soilPhosphorusMgKg != null
-				&& soilPotassiumMgKg != null
-				&& soilPh != null
-				&& soilEcMsCm != null;
-		}
-
-		void clear() {
-			stationId = null;
-			lightKlx = null;
-			windSpeedMs = null;
-			airTemperatureC = null;
-			airHumidityPercent = null;
-			soilNitrogenMgKg = null;
-			soilPhosphorusMgKg = null;
-			soilPotassiumMgKg = null;
-			soilPh = null;
-			soilEcMsCm = null;
-		}
-	}
 }

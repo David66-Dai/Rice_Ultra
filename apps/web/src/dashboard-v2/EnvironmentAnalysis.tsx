@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimeSensorReading, RealtimeTodayResponse } from '@smart-rice-security/shared'
 import { useAuth } from '../auth/useAuth.ts'
 import { describeError } from '../lib/api.ts'
+import { REALTIME_SYNC_INTERVAL_MS } from '../lib/realtime'
 import {
   ProfessionalRealtimeChart,
 } from './ProfessionalRealtimeCharts.tsx'
@@ -121,9 +122,13 @@ export function EnvironmentAnalysis() {
   useEffect(() => {
     if (!selectedStation.online) return
     let cancelled = false
+    let inFlight = false
+    const controller = new AbortController()
 
     function loadToday() {
-      auth.request<RealtimeTodayResponse>(`/api/realtime/today?stationId=${selectedStationId}`)
+      if (cancelled || inFlight) return
+      inFlight = true
+      auth.request<RealtimeTodayResponse>(`/api/realtime/today?stationId=${selectedStationId}`, { signal: controller.signal })
         .then((response) => {
           if (cancelled) return
           setReadings(response.readings)
@@ -135,13 +140,15 @@ export function EnvironmentAnalysis() {
           setLoading(false)
           setError(describeError(requestError))
         })
+        .finally(() => { inFlight = false })
     }
 
     loadToday()
-    const timer = window.setInterval(loadToday, 15_000)
+    const timer = window.setInterval(loadToday, REALTIME_SYNC_INTERVAL_MS)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      controller.abort()
     }
   }, [auth, retryKey, selectedStation.online, selectedStationId])
 

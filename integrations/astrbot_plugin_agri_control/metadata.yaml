@@ -1,0 +1,7 @@
+name: astrbot_plugin_agri_control
+display_name: 数智稻安设备控制
+desc: 通过 Rice Ultra Java 后端控制水泵和驱虫灯，接入平台权限、共享状态、通知与二次确认。
+version: v2.0.0
+author: danglong
+repo: ""
+astrbot_version: ">=4.5.7,<5"
