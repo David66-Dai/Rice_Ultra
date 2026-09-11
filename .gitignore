@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+.expo/
+web-build/
+*.jar
+*.war
+*.class
+target/
+.gradle/
+out/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Model weights over GitHub's 100MB file limit (kept locally)
+model_train/pest/yolo11x.pt
+model_train/pest/runs/detect/**/weights/*.pt
+
+# Misc
+coverage/
+.turbo/
+.cache/

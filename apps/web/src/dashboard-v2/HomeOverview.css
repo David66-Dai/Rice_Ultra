@@ -1,0 +1,712 @@
+.home-overview {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+
+.station-map,
+.field-data,
+.field-data-prompt {
+  position: relative;
+  border: 1px solid rgba(70, 209, 250, 0.24);
+  background: linear-gradient(145deg, rgba(10, 43, 81, 0.88), rgba(5, 29, 62, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(126, 235, 255, 0.06),
+    0 10px 30px rgba(0, 4, 22, 0.2);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.station-map::before,
+.field-data::before,
+.field-data-prompt::before {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 12px;
+  width: 92px;
+  height: 1px;
+  background: linear-gradient(90deg, #48e5ff, transparent);
+  box-shadow: 0 0 7px rgba(52, 220, 255, 0.55);
+}
+
+.field-data-prompt {
+  display: grid;
+  grid-template-columns: 92px minmax(280px, 1fr) minmax(460px, 1.35fr) 95px;
+  align-items: center;
+  min-height: 138px;
+  gap: 18px;
+  padding: 16px 22px;
+  background:
+    radial-gradient(circle at 10% 50%, rgba(47, 208, 244, 0.1), transparent 20%),
+    linear-gradient(100deg, rgba(13, 71, 112, 0.82), rgba(5, 29, 62, 0.92));
+}
+
+.field-data-prompt__scanner {
+  display: grid;
+  place-items: center;
+}
+
+.field-data-prompt__scanner > span {
+  position: relative;
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  border: 1px solid rgba(75, 224, 255, 0.48);
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 49%, rgba(75, 224, 255, 0.16) 50%, transparent 51%),
+    linear-gradient(transparent 49%, rgba(75, 224, 255, 0.16) 50%, transparent 51%);
+  box-shadow: inset 0 0 18px rgba(49, 204, 239, 0.08), 0 0 16px rgba(49, 204, 239, 0.08);
+}
+
+.field-data-prompt__scanner > span::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px dashed rgba(75, 224, 255, 0.25);
+  border-radius: 50%;
+}
+
+.field-data-prompt__scanner i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4de0ff;
+  box-shadow: 0 0 10px #4de0ff;
+}
+
+.field-data-prompt__message {
+  min-width: 0;
+}
+
+.field-data-prompt__message > small {
+  color: #4c9eb7;
+  font-size: 7px;
+  letter-spacing: 0.22em;
+}
+
+.field-data-prompt__message h2 {
+  margin: 4px 0 0;
+  color: #dff7fc;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.field-data-prompt__message p {
+  margin: 6px 0 0;
+  color: #6f9dac;
+  font-size: 9px;
+}
+
+.field-data-prompt__steps {
+  display: grid;
+  grid-template-columns: minmax(95px, 1fr) 12px minmax(95px, 1fr) 12px minmax(95px, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.field-data-prompt__steps > span {
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 7px 9px 7px 34px;
+  border-left: 1px solid rgba(73, 207, 241, 0.22);
+  background: rgba(8, 47, 78, 0.48);
+}
+
+.field-data-prompt__steps > span i {
+  position: absolute;
+  margin-left: -25px;
+  color: #4ddff8;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.field-data-prompt__steps strong {
+  color: #b9dce4;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.field-data-prompt__steps small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #567f8f;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-data-prompt__steps > b {
+  color: #376f82;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.field-data-prompt__status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.field-data-prompt__status > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #65adbe;
+  font-size: 8px;
+}
+
+.field-data-prompt__status > span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ce39b;
+  box-shadow: 0 0 6px #4ce39b;
+}
+
+.field-data-prompt__status > strong {
+  margin-top: 4px;
+  color: #dffaff;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.field-data-prompt__status small {
+  color: #638d9c;
+  font-size: 10px;
+}
+
+.station-map__head,
+.field-data__head {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62px;
+  gap: 16px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(67, 209, 249, 0.16);
+  background: linear-gradient(90deg, rgba(14, 68, 113, 0.25), transparent 55%);
+}
+
+.station-map__head > div:first-child,
+.station-map__title,
+.field-data__head > div {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.section-kicker {
+  display: block;
+  color: #4baac7;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 8px;
+  letter-spacing: 0.25em;
+}
+
+.station-map__head h2,
+.field-data__head h2 {
+  margin: 2px 0 0;
+  color: #e7faff;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.station-map__head h2::before,
+.field-data__head h2::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  margin-right: 9px;
+  vertical-align: -2px;
+  background: #45dfff;
+  box-shadow: 0 0 8px #22ccec;
+}
+
+.station-map__summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-left: auto;
+  color: #87b7c7;
+  font-size: 11px;
+}
+
+.station-map__summary > span,
+.station-map__summary > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.station-map__summary > strong {
+  padding: 7px 11px;
+  border: 1px solid rgba(63, 212, 251, 0.2);
+  color: #85c7d9;
+  background: rgba(20, 125, 168, 0.1);
+  font-weight: 400;
+}
+
+.station-map__summary b {
+  color: #e9fbff;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.status-dot--online {
+  background: #4aeda0;
+  box-shadow: 0 0 8px rgba(65, 234, 155, 0.86);
+}
+
+.status-dot--offline {
+  background: #68899a;
+  box-shadow: 0 0 5px rgba(94, 142, 160, 0.45);
+}
+
+.station-map__stage {
+  position: relative;
+  height: clamp(420px, 54vh, 620px);
+  min-height: 0;
+  overflow: hidden;
+  background: #071c2b;
+}
+
+.station-map__stage > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: fill;
+  filter: saturate(0.92) brightness(1.08) contrast(1.04);
+}
+
+.station-map__overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(55, 210, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(55, 210, 255, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at center, transparent 55%, rgba(1, 14, 36, 0.16) 100%),
+    linear-gradient(180deg, rgba(7, 39, 68, 0.02), rgba(4, 23, 50, 0.08));
+  background-size: 48px 48px, 48px 48px, auto, auto;
+  box-shadow: inset 0 0 28px rgba(0, 11, 33, 0.18);
+}
+
+.station-point {
+  position: absolute;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  color: #7797a3;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.station-point > i {
+  position: absolute;
+  inset: 6px;
+  border: 1px solid currentColor;
+  background: rgba(21, 50, 62, 0.72);
+  box-shadow: 0 0 10px rgba(68, 108, 121, 0.55);
+  transform: rotate(45deg);
+  transition: 160ms ease;
+}
+
+.station-point > i::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: currentColor;
+  opacity: 0.72;
+}
+
+.station-point > span {
+  position: absolute;
+  top: 34px;
+  left: 50%;
+  padding: 2px 6px;
+  border-radius: 2px;
+  color: #d7edf2;
+  background: rgba(2, 17, 32, 0.74);
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.station-point.is-online {
+  color: #4bed9e;
+}
+
+.station-point.is-online > i {
+  background: rgba(15, 101, 70, 0.74);
+  box-shadow: 0 0 12px rgba(49, 237, 148, 0.9);
+}
+
+.station-point.is-selected {
+  z-index: 4;
+}
+
+.station-point.is-selected > i {
+  inset: 1px;
+  border-width: 2px;
+  box-shadow: 0 0 0 4px rgba(75, 224, 255, 0.14), 0 0 16px currentColor;
+}
+
+.station-point:hover > i {
+  border-color: #d8faff;
+  transform: rotate(45deg) scale(1.2);
+}
+
+.station-detail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 12px;
+  max-width: 720px;
+  padding: 6px 12px;
+  border: 1px solid rgba(80, 221, 255, 0.28);
+  color: #d8f6fc;
+  background: linear-gradient(90deg, rgba(8, 52, 86, 0.55), rgba(6, 38, 68, 0.35));
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.station-detail__name {
+  display: flex;
+  flex-direction: column;
+  min-width: 86px;
+}
+
+.station-detail__name small {
+  color: #438da6;
+  font-size: 7px;
+  letter-spacing: 0.16em;
+}
+
+.station-detail__name strong {
+  margin-top: 2px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.station-detail > span {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.station-detail > span.is-online {
+  color: #56eaa5;
+  background: rgba(48, 221, 143, 0.08);
+}
+
+.station-detail > span.is-offline {
+  color: #819eaa;
+  background: rgba(106, 140, 153, 0.08);
+}
+
+.station-detail dl {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 14px;
+  margin: 0;
+}
+
+.station-detail dl > div {
+  min-width: 0;
+}
+
+.station-detail dt {
+  color: #6597aa;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.station-detail dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: #def8fd;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station-map__legend {
+  position: absolute;
+  z-index: 5;
+  left: 14px;
+  bottom: 13px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 10px;
+  border: 1px solid rgba(72, 201, 237, 0.18);
+  color: #b0d1dc;
+  background: rgba(3, 24, 43, 0.78);
+  font-size: 10px;
+  backdrop-filter: blur(5px);
+}
+
+.station-map__legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.station-map__legend em {
+  padding-left: 12px;
+  border-left: 1px solid rgba(100, 189, 214, 0.2);
+  color: #5f96a9;
+  font-style: normal;
+}
+
+.field-data {
+  padding-bottom: 8px;
+}
+
+.field-data__head {
+  min-height: 40px;
+  padding: 6px 16px;
+}
+
+.field-data__head .section-kicker {
+  font-size: 7px;
+}
+
+.field-data__head h2 {
+  font-size: 13px;
+}
+
+.field-data__head h2::before {
+  height: 11px;
+  margin-right: 7px;
+}
+
+.field-data__head time {
+  color: #5e98ac;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-data__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.field-data__empty {
+  display: grid;
+  min-height: 92px;
+  place-items: center;
+  color: #708d99;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  background: rgba(5, 27, 51, 0.42);
+}
+
+.metric-card {
+  position: relative;
+  min-width: 0;
+  padding: 8px 10px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(65, 190, 226, 0.14);
+  background:
+    linear-gradient(135deg, rgba(21, 104, 143, 0.14), transparent 52%),
+    rgba(6, 35, 67, 0.58);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  transition: 160ms ease;
+}
+
+.metric-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30px;
+  height: 1px;
+  background: #47d9f5;
+  opacity: 0.5;
+}
+
+.metric-card:hover {
+  border-color: rgba(75, 220, 255, 0.34);
+  background-color: rgba(9, 54, 91, 0.72);
+  transform: translateY(-2px);
+}
+
+.metric-card__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-card__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(69, 213, 247, 0.32);
+  color: #66dcf2;
+  background: rgba(25, 137, 177, 0.12);
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.metric-card__label {
+  overflow: hidden;
+  color: #8bb9c8;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-card > strong {
+  display: block;
+  margin-top: 6px;
+  color: #e7fbff;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-card > strong small {
+  margin-left: 4px;
+  color: #6696a7;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.metric-card__track {
+  height: 2px;
+  margin-top: 7px;
+  overflow: hidden;
+  background: rgba(89, 163, 184, 0.12);
+}
+
+.metric-card__track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #258cb8, #55d9f1);
+  box-shadow: 0 0 6px rgba(69, 214, 241, 0.45);
+}
+
+.metric-card--good .metric-card__track i {
+  background: linear-gradient(90deg, #269d78, #52e0a3);
+}
+
+.metric-card > p {
+  margin: 4px 0 0;
+  color: #548da2;
+  font-size: 8px;
+}
+
+@media (max-width: 1400px) {
+  .field-data__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .station-detail dl {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .home-overview {
+    padding: 10px;
+  }
+
+  .field-data-prompt {
+    grid-template-columns: 70px minmax(0, 1fr) 75px;
+  }
+
+  .field-data-prompt__steps {
+    grid-column: 1 / -1;
+  }
+
+  .station-map__summary > span {
+    display: none;
+  }
+
+  .field-data__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .station-map__head,
+  .field-data__head {
+    padding-inline: 12px;
+  }
+
+  .station-map__head h2,
+  .field-data__head h2 {
+    font-size: 14px;
+  }
+
+  .station-map__legend em,
+  .field-data__head time {
+    display: none;
+  }
+
+  .field-data__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-data-prompt {
+    grid-template-columns: 1fr;
+  }
+
+  .field-data-prompt__scanner,
+  .field-data-prompt__status {
+    display: none;
+  }
+
+  .field-data-prompt__steps {
+    grid-template-columns: 1fr;
+  }
+
+  .field-data-prompt__steps > b {
+    display: none;
+  }
+}
+

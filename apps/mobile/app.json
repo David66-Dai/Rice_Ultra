@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "数智稻安",
+    "slug": "smart-rice-security",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartrice.app"
+    },
+    "android": {
+      "package": "com.smartrice.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f3d2e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

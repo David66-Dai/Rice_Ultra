@@ -1,0 +1,17 @@
+# Deep learning backbone
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Image IO
+Pillow>=9.0.0
+
+# Training progress bar
+tqdm>=4.65.0
+
+# Loss curve plot
+matplotlib>=3.7.0
+
+# FastAPI backend (api_server.py)
+fastapi>=0.95.0
+uvicorn>=0.20.0
+python-multipart>=0.0.5

@@ -1,0 +1,21 @@
+{
+  "name": "smart-rice-security",
+  "private": true,
+  "version": "0.1.0",
+  "description": "数智稻安 — 大数据驱动下基于大模型的水稻农田智能监测预警平台",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run start --workspace=@smart-rice-security/mobile",
+    "android": "npm run android --workspace=@smart-rice-security/mobile",
+    "web": "npm run dev --workspace=@smart-rice-security/web",
+    "web:build": "npm run build --workspace=@smart-rice-security/web",
+    "server": "cd server && mvnw.cmd spring-boot:run",
+    "inference": "python -m uvicorn app.main:app --reload --app-dir inference --port 8001"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
