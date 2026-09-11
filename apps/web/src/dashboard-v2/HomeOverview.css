@@ -280,6 +280,16 @@
   box-shadow: 0 0 8px rgba(65, 234, 155, 0.86);
 }
 
+.status-dot--yellow {
+  background: #efc34f;
+  box-shadow: 0 0 8px rgba(239, 195, 79, 0.86);
+}
+
+.status-dot--alert {
+  background: #ff6464;
+  box-shadow: 0 0 8px rgba(255, 100, 100, 0.86);
+}
+
 .status-dot--offline {
   background: #68899a;
   box-shadow: 0 0 5px rgba(94, 142, 160, 0.45);
@@ -370,6 +380,24 @@
   box-shadow: 0 0 12px rgba(49, 237, 148, 0.9);
 }
 
+.station-point.is-alert-yellow {
+  color: #efc34f;
+}
+
+.station-point.is-alert-yellow > i {
+  background: rgba(120, 90, 20, 0.74);
+  box-shadow: 0 0 12px rgba(239, 195, 79, 0.9);
+}
+
+.station-point.is-alert-red {
+  color: #ff6464;
+}
+
+.station-point.is-alert-red > i {
+  background: rgba(120, 20, 28, 0.74);
+  box-shadow: 0 0 12px rgba(255, 100, 100, 0.9);
+}
+
 .station-point.is-selected {
   z-index: 4;
 }
@@ -434,6 +462,16 @@
 .station-detail > span.is-offline {
   color: #819eaa;
   background: rgba(106, 140, 153, 0.08);
+}
+
+.station-detail > span.is-alert-yellow {
+  color: #efc34f;
+  background: rgba(239, 195, 79, 0.1);
+}
+
+.station-detail > span.is-alert-red {
+  color: #ff7a7a;
+  background: rgba(255, 100, 100, 0.1);
 }
 
 .station-detail dl {

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "app.realtime.serial.enabled", havingValue = "true")
-public class SerialSensorCollector implements SmartLifecycle {
+public class SerialSensorCollector implements SmartLifecycle, DeviceActuator {
 
 	private static final Logger log = LoggerFactory.getLogger(SerialSensorCollector.class);
 	private static final Charset DEVICE_CHARSET = Charset.forName("GBK");

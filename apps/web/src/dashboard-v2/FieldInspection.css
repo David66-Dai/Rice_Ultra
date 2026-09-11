@@ -247,9 +247,133 @@
 .camera-screen__focus i::before { top: -7px; left: 50%; width: 1px; height: 14px; }
 .camera-screen__focus i::after { bottom: -7px; left: 50%; width: 1px; height: 14px; }
 
+.camera-screen__flash {
+  pointer-events: none;
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  background: rgba(236, 252, 255, 0.72);
+}
+
+.camera-shutter {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 10px;
+  border: 1px solid rgba(91, 236, 255, 0.55);
+  color: #e7fbff;
+  background: rgba(8, 42, 74, 0.82);
+  box-shadow: 0 8px 22px rgba(0, 8, 22, 0.35);
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.camera-shutter i {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #8aefff;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 3px rgba(12, 48, 78, 0.92), 0 0 8px rgba(73, 222, 255, 0.45);
+  background: #d7f8ff;
+}
+
+.camera-shutter:hover {
+  border-color: rgba(126, 244, 255, 0.95);
+  background: rgba(16, 78, 126, 0.92);
+}
+
+.camera-capture {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 16, 32, 0.92);
+}
+
+.camera-capture img {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  object-fit: contain;
+  background: #04131f;
+}
+
+.camera-capture__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid rgba(70, 210, 249, 0.2);
+  background: linear-gradient(180deg, rgba(10, 48, 84, 0.96), rgba(5, 28, 56, 0.98));
+}
+
+.camera-capture__panel strong {
+  color: #e4f9ff;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+
+.camera-capture__panel p,
+.camera-capture__panel em {
+  margin: 0;
+  color: #8fc3d6;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.camera-capture__panel em {
+  color: #ffb4a8;
+}
+
+.camera-capture__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.camera-capture__actions button {
+  height: 34px;
+  border: 1px solid rgba(73, 222, 255, 0.35);
+  color: #d8f7ff;
+  background: rgba(18, 82, 128, 0.55);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.camera-capture__actions button.is-leaf {
+  border-color: rgba(79, 220, 161, 0.45);
+  background: rgba(18, 96, 74, 0.55);
+}
+
+.camera-capture__actions button.is-pest {
+  border-color: rgba(255, 176, 92, 0.45);
+  background: rgba(128, 72, 18, 0.5);
+}
+
+.camera-capture__actions button:hover:not(:disabled) {
+  border-color: rgba(91, 236, 255, 0.8);
+  background: rgba(28, 112, 168, 0.7);
+}
+
+.camera-capture__actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .camera-controls {
   display: grid;
-  grid-template-columns: minmax(150px, 1.25fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(150px, 1.25fr) minmax(140px, 1fr) auto auto;
   align-items: end;
   gap: 10px;
   padding: 11px 14px 13px;
@@ -257,7 +381,8 @@
 }
 
 .camera-controls label,
-.camera-controls__status {
+.camera-controls__status,
+.camera-controls__capture {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -265,10 +390,39 @@
 }
 
 .camera-controls label > span,
-.camera-controls__status > span {
+.camera-controls__status > span,
+.camera-controls__capture > span {
   color: #628fa1;
   font-size: 9px;
   letter-spacing: 0.08em;
+}
+
+.camera-controls__capture button {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgba(73, 222, 255, 0.45);
+  color: #d8f7ff;
+  background: rgba(18, 82, 128, 0.55);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.camera-controls__capture button:hover:not(:disabled) {
+  border-color: rgba(91, 236, 255, 0.8);
+  background: rgba(28, 112, 168, 0.7);
+}
+
+.camera-controls__capture button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.camera-capture-error {
+  margin: 0;
+  padding: 0 14px 12px;
+  color: #ffb4a8;
+  font-size: 12px;
 }
 
 .camera-controls select {
@@ -348,6 +502,38 @@
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
+button.recognition-card {
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+}
+
+.recognition-card--upload {
+  cursor: pointer;
+}
+
+.recognition-card--upload:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--recognition-color) 55%, transparent);
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--recognition-color) 10%, transparent);
+}
+
+.recognition-card--upload:focus-visible {
+  outline: 1px solid var(--recognition-color);
+  outline-offset: -2px;
+}
+
+.recognition-card.is-busy {
+  cursor: progress;
+  opacity: 0.88;
+}
+
+.recognition-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .recognition-card--attention { --recognition-color: #efc34f; }
 .recognition-card--danger { --recognition-color: #ff6464; }
 .recognition-card--offline { --recognition-color: #8a9aa8; }
@@ -391,6 +577,26 @@
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hyperspectral-curve {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 8px;
+}
+
+.hyperspectral-curve line {
+  stroke: rgba(106, 167, 184, 0.18);
+  stroke-width: 1;
+}
+
+.hyperspectral-curve polyline {
+  fill: none;
+  stroke: var(--recognition-color);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
 .recognition-progress {
@@ -438,6 +644,8 @@
 }
 
 .station-status__legend .is-normal { background: #4ce39b; box-shadow: 0 0 6px #3ed78f; }
+.station-status__legend .is-attention { background: #ecc24e; box-shadow: 0 0 6px #ecc24e; }
+.station-status__legend .is-danger { background: #ff6565; box-shadow: 0 0 6px #ff6565; }
 .station-status__legend .is-offline { background: #7d8b98; box-shadow: none; }
 
 .station-status__grid {
@@ -605,6 +813,10 @@
 
   .camera-controls {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .camera-controls__capture {
+    grid-column: 1 / -1;
   }
 
   .camera-controls__status {

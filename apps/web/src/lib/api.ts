@@ -29,9 +29,20 @@ type RequestOptions = {
   signal?: AbortSignal
 }
 
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData
+}
+
+function encodeBody(body: unknown): BodyInit | undefined {
+  if (body === undefined) return undefined
+  if (isFormData(body)) return body
+  return JSON.stringify(body)
+}
+
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+  const form = isFormData(options.body)
+  if (options.body !== undefined && !form) headers['Content-Type'] = 'application/json'
   if (options.token) headers.Authorization = `Bearer ${options.token}`
 
   let response: Response
@@ -39,7 +50,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     response = await fetch(`${API_BASE}${path}`, {
       method: options.method ?? (options.body !== undefined ? 'POST' : 'GET'),
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: encodeBody(options.body),
       signal: options.signal,
     })
   } catch (error) {

@@ -9,7 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:config": "node --experimental-strip-types --test config/shared-config.test.ts config/vite-config.test.ts",
-    "test:devices": "node --experimental-strip-types --test tests/device-sync.test.ts tests/auth-session.test.ts"
+    "test:devices": "node --experimental-strip-types --test tests/device-state.test.ts",
+    "test:alerts": "node --experimental-strip-types --test tests/station-alerts.test.ts",
+    "test:capture": "node --experimental-strip-types --test tests/camera-capture.test.ts"
   },
   "dependencies": {
     "@smart-rice-security/shared": "*",

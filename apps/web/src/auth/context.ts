@@ -8,7 +8,7 @@ export type AuthState =
   | { status: 'anonymous'; user: null; accessToken: null; via: null }
   | { status: 'authenticated'; user: UserInfo; accessToken: string; via: LoginVia }
 
-export type RequestOptions = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown }
+export type RequestOptions = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; signal?: AbortSignal }
 
 export type AuthContextValue = AuthState & {
   /** 上次勾选“记住密码”保存的账号，用于回填 */

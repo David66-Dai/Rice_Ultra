@@ -3,9 +3,13 @@ package com.smartrice.server.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Enumeration;
 import java.util.Map;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
@@ -130,9 +134,22 @@ class RiceConfigurationTests {
 	}
 
 	@Test
-	void postProcessorIsRegisteredAndRunsBeforeConfigData() {
+	void postProcessorIsRegisteredAndRunsBeforeConfigData() throws Exception {
 		assertThat(new RiceConfigEnvironmentPostProcessor().getOrder()).isLessThan(ConfigDataEnvironmentPostProcessor.ORDER);
-		assertThat(SpringFactoriesLoader.loadFactoryNames(EnvironmentPostProcessor.class, getClass().getClassLoader()))
-			.contains(RiceConfigEnvironmentPostProcessor.class.getName());
+		Enumeration<URL> locations = getClass().getClassLoader()
+			.getResources(SpringFactoriesLoader.FACTORIES_RESOURCE_LOCATION);
+		boolean registered = false;
+		while (locations.hasMoreElements()) {
+			try (InputStream in = locations.nextElement().openStream()) {
+				Properties properties = new Properties();
+				properties.load(in);
+				String listed = properties.getProperty(EnvironmentPostProcessor.class.getName(), "");
+				if (listed.contains(RiceConfigEnvironmentPostProcessor.class.getName())) {
+					registered = true;
+					break;
+				}
+			}
+		}
+		assertThat(registered).isTrue();
 	}
 }

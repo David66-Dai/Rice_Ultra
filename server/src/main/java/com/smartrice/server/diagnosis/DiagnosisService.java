@@ -1,0 +1,281 @@
+package com.smartrice.server.diagnosis;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smartrice.server.diagnosis.StationAlertListResponse.StationAlertStatus;
+import com.smartrice.server.realtime.DeviceCommandService;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class DiagnosisService {
+
+	static final Pattern STATION_ID = Pattern.compile("S(?:0[1-9]|10)");
+	private static final List<String> STATIONS = List.of(
+		"S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10");
+
+	private final InferenceClient inference;
+	private final InspectionDiagnosisRepository diagnoses;
+	private final DeviceCommandService devices;
+	private final ObjectMapper json;
+
+	public DiagnosisService(InferenceClient inference, InspectionDiagnosisRepository diagnoses,
+			DeviceCommandService devices, ObjectMapper json) {
+		this.inference = inference;
+		this.diagnoses = diagnoses;
+		this.devices = devices;
+		this.json = json;
+	}
+
+	@Transactional
+	public DiagnosisResponse diagnose(String stationId, String task, MultipartFile file) {
+		String station = validateStation(stationId);
+		if (!"S01".equals(station)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "站点离线，暂不可识别");
+		}
+		String kind = validateTask(task);
+		if (file == null || file.isEmpty()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请上传图片文件");
+		}
+		Map<String, Object> result = inference.predict(kind, file);
+		ParsedPrediction parsed = parse(kind, result, file.getOriginalFilename());
+		InspectionDiagnosis row = new InspectionDiagnosis();
+		row.setStationId(station);
+		row.setTask(kind);
+		row.setFilename(truncate(parsed.filename, 255));
+		row.setLabel(truncate(parsed.label, 128));
+		row.setLabelZh(truncate(parsed.labelZh, 128));
+		row.setConfidence(parsed.confidence);
+		row.setDetectionCount(parsed.detectionCount);
+		row.setAlertLevel(parsed.alert.json());
+		row.setResultJson(writeJson(result));
+		InspectionDiagnosis saved = diagnoses.save(row);
+		String activatedDevice = null;
+		String deviceError = null;
+		if (parsed.alert == AlertLevel.RED) {
+			String device = "leaf".equals(kind) ? DeviceCommandService.PUMP : DeviceCommandService.LAMP;
+			try {
+				devices.ensureEnabled(station, device, "diagnosis");
+				activatedDevice = device;
+			}
+			catch (ResponseStatusException ex) {
+				deviceError = ex.getReason() == null ? "设备联动失败" : ex.getReason();
+			}
+			catch (RuntimeException ex) {
+				deviceError = "设备联动失败";
+			}
+		}
+		return toResponse(saved, result, combinedAlert(station).json(), activatedDevice, deviceError);
+	}
+
+	public StationAlertListResponse stationAlerts() {
+		List<StationAlertStatus> stations = new ArrayList<>(STATIONS.size());
+		for (String station : STATIONS) {
+			stations.add(statusOf(station));
+		}
+		return new StationAlertListResponse(stations);
+	}
+
+	private StationAlertStatus statusOf(String station) {
+		InspectionDiagnosis leaf = diagnoses.findFirstByStationIdAndTaskOrderByCreatedAtDesc(station, "leaf").orElse(null);
+		InspectionDiagnosis pest = diagnoses.findFirstByStationIdAndTaskOrderByCreatedAtDesc(station, "pest").orElse(null);
+		AlertLevel leafAlert = leaf == null ? AlertLevel.GREEN : AlertLevel.parse(leaf.getAlertLevel());
+		AlertLevel pestAlert = pest == null ? AlertLevel.GREEN : AlertLevel.parse(pest.getAlertLevel());
+		Instant updated = latest(leaf == null ? null : leaf.getCreatedAt(), pest == null ? null : pest.getCreatedAt());
+		return new StationAlertStatus(
+			station,
+			AlertLevel.max(leafAlert, pestAlert).json(),
+			leafAlert.json(),
+			leaf == null ? null : leaf.getLabel(),
+			leaf == null ? null : leaf.getLabelZh(),
+			leaf == null ? null : leaf.getConfidence(),
+			pestAlert.json(),
+			pest == null ? null : pest.getDetectionCount(),
+			pest == null ? null : pest.getLabelZh() != null ? pest.getLabelZh() : pest.getLabel(),
+			updated
+		);
+	}
+
+	private AlertLevel combinedAlert(String station) {
+		AlertLevel leaf = diagnoses.findFirstByStationIdAndTaskOrderByCreatedAtDesc(station, "leaf")
+			.map(row -> AlertLevel.parse(row.getAlertLevel()))
+			.orElse(AlertLevel.GREEN);
+		AlertLevel pest = diagnoses.findFirstByStationIdAndTaskOrderByCreatedAtDesc(station, "pest")
+			.map(row -> AlertLevel.parse(row.getAlertLevel()))
+			.orElse(AlertLevel.GREEN);
+		return AlertLevel.max(leaf, pest);
+	}
+
+	static String validateStation(String stationId) {
+		String normalized = stationId == null ? "" : stationId.trim().toUpperCase(Locale.ROOT);
+		if (!STATION_ID.matcher(normalized).matches()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "stationId 必须为 S01-S10");
+		}
+		return normalized;
+	}
+
+	private static String validateTask(String task) {
+		if ("leaf".equals(task) || "pest".equals(task)) {
+			return task;
+		}
+		throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "识别任务必须为 leaf 或 pest");
+	}
+
+	private ParsedPrediction parse(String task, Map<String, Object> result, String fallbackName) {
+		String filename = firstText(result.get("filename"), fallbackName);
+		if ("leaf".equals(task)) {
+			String label = firstText(result.get("label"), null);
+			String labelZh = firstText(result.get("label_zh"), firstText(result.get("labelZh"), label));
+			Double confidence = asDouble(result.get("confidence"));
+			Boolean hasDamage = asBoolean(result.get("has_leaf_damage"));
+			if (hasDamage == null) {
+				hasDamage = asBoolean(result.get("hasLeafDamage"));
+			}
+			return new ParsedPrediction(filename, label, labelZh, confidence, 0, AlertLevel.fromLeaf(label, labelZh, hasDamage));
+		}
+		int count = pestCount(result);
+		String pestLabel = pestLabel(result);
+		Double confidence = pestConfidence(result);
+		return new ParsedPrediction(filename, pestLabel, pestLabel, confidence, count, AlertLevel.fromPest(count));
+	}
+
+	private static int pestCount(Map<String, Object> result) {
+		Number count = asNumber(result.get("count"));
+		if (count != null) {
+			return Math.max(0, count.intValue());
+		}
+		Object detections = result.get("detections");
+		if (detections instanceof Collection<?> items) {
+			return items.size();
+		}
+		return 0;
+	}
+
+	private static String pestLabel(Map<String, Object> result) {
+		List<Map<String, Object>> detections = detections(result.get("detections"));
+		if (detections.isEmpty()) {
+			return null;
+		}
+		Map<String, Integer> votes = new LinkedHashMap<>();
+		for (Map<String, Object> detection : detections) {
+			String name = firstText(detection.get("class_name"), firstText(detection.get("className"), "未命名"));
+			votes.merge(name, 1, Integer::sum);
+		}
+		return votes.entrySet().stream()
+			.max(Map.Entry.comparingByValue())
+			.map(Map.Entry::getKey)
+			.orElse(null);
+	}
+
+	private static Double pestConfidence(Map<String, Object> result) {
+		List<Map<String, Object>> detections = detections(result.get("detections"));
+		return detections.stream()
+			.map(item -> asDouble(item.get("confidence")))
+			.filter(value -> value != null)
+			.max(Double::compareTo)
+			.orElse(null);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static List<Map<String, Object>> detections(Object raw) {
+		if (!(raw instanceof Collection<?> items)) {
+			return List.of();
+		}
+		List<Map<String, Object>> detections = new ArrayList<>();
+		for (Object item : items) {
+			if (item instanceof Map<?, ?> map) {
+				detections.add((Map<String, Object>) map);
+			}
+		}
+		return detections;
+	}
+
+	private DiagnosisResponse toResponse(InspectionDiagnosis row, Map<String, Object> result, String stationAlert,
+			String activatedDevice, String deviceError) {
+		return new DiagnosisResponse(
+			row.getId(),
+			row.getStationId(),
+			row.getTask(),
+			row.getFilename(),
+			row.getLabel(),
+			row.getLabelZh(),
+			row.getConfidence(),
+			row.getDetectionCount(),
+			row.getAlertLevel(),
+			stationAlert,
+			row.getCreatedAt(),
+			result,
+			activatedDevice,
+			deviceError
+		);
+	}
+
+	private String writeJson(Map<String, Object> result) {
+		try {
+			return json.writeValueAsString(result);
+		}
+		catch (JsonProcessingException ex) {
+			return "{}";
+		}
+	}
+
+	private static Instant latest(Instant left, Instant right) {
+		if (left == null) {
+			return right;
+		}
+		if (right == null) {
+			return left;
+		}
+		return left.isAfter(right) ? left : right;
+	}
+
+	private static String firstText(Object value, String fallback) {
+		if (value instanceof String text && !text.isBlank()) {
+			return text.trim();
+		}
+		return fallback;
+	}
+
+	private static String truncate(String value, int max) {
+		if (value == null) {
+			return null;
+		}
+		return value.length() <= max ? value : value.substring(0, max);
+	}
+
+	private static Number asNumber(Object value) {
+		return value instanceof Number number ? number : null;
+	}
+
+	private static Double asDouble(Object value) {
+		return value instanceof Number number ? number.doubleValue() : null;
+	}
+
+	private static Boolean asBoolean(Object value) {
+		if (value instanceof Boolean flag) {
+			return flag;
+		}
+		return null;
+	}
+
+	private record ParsedPrediction(
+		String filename,
+		String label,
+		String labelZh,
+		Double confidence,
+		int detectionCount,
+		AlertLevel alert
+	) {
+	}
+}

@@ -1,17 +1,18 @@
 package com.smartrice.server.tools;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.smartrice.server.config.RiceConfiguration;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -52,7 +53,7 @@ public final class CreateUserTool {
 		}
 		request.validate();
 
-		DbConfig db = DbConfig.load();
+		DbConfig db = DbConfig.load(request.configurationArgs.toArray(String[]::new));
 		try (Connection conn = db.open()) {
 			conn.setAutoCommit(false);
 			Long existingId = findUserId(conn, request.username);
@@ -137,7 +138,7 @@ public final class CreateUserTool {
 			  --disabled           创建为禁用状态
 			  --help, -h           显示本说明
 
-			数据库：读取 server/src/main/resources/application-mysql.properties
+			数据库：读取 conf/config.yaml（可用 --spring.profiles.active、--rice.config.path）
 			也可用环境变量覆盖：CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME / CREATE_USER_DB_PASSWORD
 			""");
 	}
@@ -150,6 +151,7 @@ public final class CreateUserTool {
 		String password;
 		String displayName;
 		String role = "ADMIN";
+		final List<String> configurationArgs = new ArrayList<>();
 
 		static Request parse(String[] args) {
 			Request req = fromEnv();
@@ -169,18 +171,30 @@ public final class CreateUserTool {
 					case "--display-name", "-n" -> req.displayName = requireValue(args, ++i, arg);
 					case "--role", "-r" -> req.role = requireValue(args, ++i, arg);
 					default -> {
-						if (arg.startsWith("-")) {
+						if (isRuntimeConfiguration(arg)) {
+							if (arg.contains("=")) {
+								req.configurationArgs.add(arg);
+							}
+							else {
+								req.configurationArgs.add(arg + "=" + requireValue(args, ++i, arg));
+							}
+						}
+						else if (arg.startsWith("-")) {
 							throw new IllegalArgumentException("未知参数：" + arg + "。使用 --help 查看用法");
 						}
-						if (req.username == null) {
+						else if (req.username == null) {
 							req.username = arg;
-						} else if (req.password == null) {
+						}
+						else if (req.password == null) {
 							req.password = arg;
-						} else if (req.displayName == null) {
+						}
+						else if (req.displayName == null) {
 							req.displayName = arg;
-						} else if ("ADMIN".equals(req.role)) {
+						}
+						else if ("ADMIN".equals(req.role)) {
 							req.role = arg;
-						} else {
+						}
+						else {
 							throw new IllegalArgumentException("多余参数：" + arg);
 						}
 					}
@@ -248,6 +262,10 @@ public final class CreateUserTool {
 			}
 		}
 
+		private static boolean isRuntimeConfiguration(String arg) {
+			return arg.startsWith("--spring.") || arg.startsWith("--rice.config.");
+		}
+
 		private static String requireValue(String[] args, int index, String flag) {
 			if (index >= args.length) {
 				throw new IllegalArgumentException(flag + " 需要一个值");
@@ -293,61 +311,57 @@ public final class CreateUserTool {
 			}
 		}
 
-		static DbConfig load() {
-			String url = trimToNull(System.getenv("CREATE_USER_DB_URL"));
-			String username = trimToNull(System.getenv("CREATE_USER_DB_USERNAME"));
-			String password = System.getenv("CREATE_USER_DB_PASSWORD");
-
-			Map<String, String> file = readMysqlProperties();
-			if (url == null) {
-				url = file.get("spring.datasource.url");
-			}
-			if (username == null) {
-				username = file.get("spring.datasource.username");
-			}
-			if (password == null) {
-				password = file.get("spring.datasource.password");
-			}
-			if (url == null || username == null) {
-				throw new IllegalArgumentException(
-					"未找到数据库配置。请在 server 目录运行，或设置 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME");
-			}
-			return new DbConfig(url, username, password == null ? "" : password);
+		static DbConfig load(String... args) {
+			return load(RiceConfiguration.loadEnvironment(args), environmentOverrides());
 		}
 
-		private static Map<String, String> readMysqlProperties() {
-			Map<String, String> values = new LinkedHashMap<>();
-			for (Path path : candidatePropertyFiles()) {
-				if (!Files.isRegularFile(path)) {
-					continue;
+		static DbConfig load(Environment environment, Map<String, String> overrides) {
+			Map<String, String> values = overrides == null ? Map.of() : overrides;
+			try {
+				String url = firstPresent(values.get("CREATE_USER_DB_URL"), environment.getProperty("spring.datasource.url"));
+				String username = firstPresent(values.get("CREATE_USER_DB_USERNAME"),
+					environment.getProperty("spring.datasource.username"));
+				String password = values.containsKey("CREATE_USER_DB_PASSWORD")
+					? nullToEmpty(values.get("CREATE_USER_DB_PASSWORD"))
+					: nullToEmpty(environment.getProperty("spring.datasource.password"));
+				if (url == null || username == null) {
+					throw new IllegalArgumentException(
+						"未找到数据库配置。请在项目目录运行，或设置 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME");
 				}
-				try {
-					for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-						String trimmed = line.trim();
-						if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-							continue;
-						}
-						int eq = trimmed.indexOf('=');
-						if (eq <= 0) {
-							continue;
-						}
-						values.put(trimmed.substring(0, eq).trim(), trimmed.substring(eq + 1).trim());
-					}
-					return values;
-				} catch (Exception ex) {
-					throw new IllegalArgumentException("读取 " + path + " 失败：" + ex.getMessage(), ex);
-				}
+				return new DbConfig(url, username, password);
 			}
-			return values;
+			catch (IllegalArgumentException ex) {
+				if (ex.getMessage() != null && ex.getMessage().startsWith("未找到数据库配置")) {
+					throw ex;
+				}
+				throw new IllegalArgumentException("无法解析数据库配置，请检查统一配置中的占位符和环境变量。");
+			}
 		}
 
-		private static Path[] candidatePropertyFiles() {
-			Path cwd = Path.of("").toAbsolutePath();
-			return new Path[] {
-				cwd.resolve("src/main/resources/application-mysql.properties"),
-				cwd.resolve("server/src/main/resources/application-mysql.properties"),
-				cwd.resolve("../src/main/resources/application-mysql.properties"),
-			};
+		private static Map<String, String> environmentOverrides() {
+			Map<String, String> overrides = new LinkedHashMap<>();
+			putEnv(overrides, "CREATE_USER_DB_URL");
+			putEnv(overrides, "CREATE_USER_DB_USERNAME");
+			if (System.getenv("CREATE_USER_DB_PASSWORD") != null) {
+				overrides.put("CREATE_USER_DB_PASSWORD", System.getenv("CREATE_USER_DB_PASSWORD"));
+			}
+			return overrides;
+		}
+
+		private static void putEnv(Map<String, String> overrides, String name) {
+			String value = trimToNull(System.getenv(name));
+			if (value != null) {
+				overrides.put(name, value);
+			}
+		}
+
+		private static String firstPresent(String override, String fallback) {
+			String value = trimToNull(override);
+			return value != null ? value : trimToNull(fallback);
+		}
+
+		private static String nullToEmpty(String value) {
+			return value == null ? "" : value;
 		}
 
 		private static String trimToNull(String value) {

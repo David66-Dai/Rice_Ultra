@@ -226,19 +226,26 @@ Hive 不可用返回明确错误，不回退到模拟数据；凭据只留在服
 从 Open-Meteo 当前小时预报更新；未配置固定经纬度时按服务器公网 IP 定位。
 配置项位于 `conf/config.yaml` 的 `app.realtime.*`；dev 模式禁用串口。
 
-### 4. 推理服务（可选）
+### 4. 推理服务（叶害 / 虫害识别）
 
 ```bash
 pip install -r inference/requirements.txt
 npm run inference
 ```
 
-也可以在 `inference/` 中执行 `python run.py`。启动器读取统一 YAML 的监听端口，
-不再通过写死的 `uvicorn --port` 启动。推理接口目前仍是 stub，本次只迁移配置读取。
+也可以在 `inference/` 中执行 `python run.py`。启动器读取统一 YAML 的监听端口。
+默认加载：
 
-默认健康检查为 http://127.0.0.1:8001/health 。
+- 叶害 ResNet18：`model_train/leaf/checkpoints/best_model.pt`（可用 `LEAF_MODEL_PATH` 覆盖）
+- 虫害 YOLO：`model_train/pest/runs/detect/rice_pests_v2/weights/best.pt`（可用 `PEST_MODEL_PATH` 覆盖）
 
-诊断转发：`POST /api/diagnosis/leaf|pest`（multipart `file`）→ 推理服务。
+健康检查：http://127.0.0.1:8001/health 。
+
+诊断接口（需登录）：
+
+- `POST /api/diagnosis/leaf?stationId=S01`（multipart `file`）
+- `POST /api/diagnosis/pest?stationId=S01`（multipart `file`）
+- `GET /api/diagnosis/stations`（各站当前告警色，由最新叶害 + 最新虫害合成）
 
 ### 配置验证（不访问真实设备）
 
