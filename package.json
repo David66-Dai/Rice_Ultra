@@ -13,7 +13,7 @@
     "web": "npm run dev --workspace=@smart-rice-security/web",
     "web:build": "npm run build --workspace=@smart-rice-security/web",
     "server": "cd server && mvnw.cmd spring-boot:run",
-    "inference": "python -m uvicorn app.main:app --reload --app-dir inference --port 8001"
+    "inference": "python inference/run.py"
   },
   "engines": {
     "node": ">=20"

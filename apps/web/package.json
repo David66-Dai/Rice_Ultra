@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:config": "node --experimental-strip-types --test config/shared-config.test.ts config/vite-config.test.ts",
+    "test:devices": "node --experimental-strip-types --test tests/device-sync.test.ts tests/auth-session.test.ts"
   },
   "dependencies": {
     "@smart-rice-security/shared": "*",
@@ -21,6 +23,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
     "typescript": "~5.9.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "yaml": "^2.9.0"
   }
 }

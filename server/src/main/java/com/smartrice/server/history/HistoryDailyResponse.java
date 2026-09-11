@@ -12,38 +12,41 @@ public record HistoryDailyResponse(
 		String stationId,
 		EnvironmentAverages environment,
 		PestDiseaseArchive pestDisease,
-		SpectralArchive spectrum
+		SpectralArchive spectrum,
+		String source
 	) {
 	}
 
 	public record EnvironmentAverages(
-		double lightKlx,
-		double windSpeedMs,
-		double rainfallMmH,
-		double airTemperatureC,
-		double airHumidityPercent,
-		double soilNitrogenMgKg,
-		double soilPhosphorusMgKg,
-		double soilPotassiumMgKg,
-		double soilPh,
-		double soilEcMsCm
+		Double lightKlx,
+		Double windSpeedMs,
+		Double rainfallMmH,
+		Double airTemperatureC,
+		Double airHumidityPercent,
+		Double soilNitrogenPpm,
+		Double soilPhosphorusPpm,
+		Double soilPotassiumPpm,
+		Double soilPh,
+		Double soilEcMsCm,
+		Double soilTemperatureC,
+		Double soilMoisturePercent
 	) {
 	}
 
 	public record PestDiseaseArchive(
-		int diseaseCount,
-		double pestDensityPer100Plants,
-		double affectedAreaPercent,
-		double riskIndex,
-		double recognitionConfidencePercent
+		Integer diseaseCount,
+		Double pestDensityPer100Plants,
+		Double affectedAreaPercent,
+		Double riskIndex,
+		Double recognitionConfidencePercent
 	) {
 	}
 
 	public record SpectralArchive(
-		double ndvi,
-		double ndre,
-		double gndvi,
-		double chlorophyllSpad,
+		Double ndvi,
+		Double ndre,
+		Double gndvi,
+		Double chlorophyllSpad,
 		List<Double> reflectancePercent
 	) {
 	}
