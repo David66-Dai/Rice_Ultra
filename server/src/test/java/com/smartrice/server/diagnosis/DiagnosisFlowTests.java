@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartrice.server.realtime.StationDeviceRepository;
+import com.smartrice.server.realtime.DeviceActuator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,10 +42,14 @@ class DiagnosisFlowTests {
 	@MockitoBean
 	InferenceClient inference;
 
+	@MockitoBean
+	DeviceActuator actuator;
+
 	@BeforeEach
 	void reset() {
 		diagnoses.deleteAll();
 		devices.deleteAll();
+		when(actuator.isAvailable()).thenReturn(true);
 	}
 
 	@Test

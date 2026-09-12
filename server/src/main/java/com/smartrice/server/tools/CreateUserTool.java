@@ -39,7 +39,7 @@ public final class CreateUserTool {
 			System.err.println(ex.getMessage());
 			code = 2;
 		} catch (Exception ex) {
-			System.err.println("创建账号失败：" + ex.getMessage());
+			System.err.println("创建账号失败，请检查数据库连接、表结构和统一配置。");
 			code = 1;
 		}
 		System.exit(code);
@@ -138,7 +138,8 @@ public final class CreateUserTool {
 			  --disabled           创建为禁用状态
 			  --help, -h           显示本说明
 
-			数据库：读取 conf/config.yaml（可用 --spring.profiles.active、--rice.config.path）
+			配置：从当前目录向上查找 conf/config.yaml；RICE_CONFIG_PATH 可指定文件。
+			支持 --rice.config.path=<文件>、--spring.profiles.active=dev 及 --spring.* 配置覆盖。
 			也可用环境变量覆盖：CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME / CREATE_USER_DB_PASSWORD
 			""");
 	}
@@ -306,8 +307,7 @@ public final class CreateUserTool {
 			try {
 				return DriverManager.getConnection(url, props);
 			} catch (SQLException ex) {
-				throw new SQLException("无法连接 MySQL（" + url + "）：" + ex.getMessage()
-					+ "。请确认服务已启动，且已执行 server/sql/init.sql", ex);
+				throw new SQLException("无法连接数据库，请检查统一配置及数据库服务，并确认已初始化账号表。");
 			}
 		}
 
@@ -317,25 +317,30 @@ public final class CreateUserTool {
 
 		static DbConfig load(Environment environment, Map<String, String> overrides) {
 			Map<String, String> values = overrides == null ? Map.of() : overrides;
+			String url = trimToNull(values.get("CREATE_USER_DB_URL"));
+			String username = trimToNull(values.get("CREATE_USER_DB_USERNAME"));
+			String password = values.containsKey("CREATE_USER_DB_PASSWORD")
+				? values.get("CREATE_USER_DB_PASSWORD") : null;
 			try {
-				String url = firstPresent(values.get("CREATE_USER_DB_URL"), environment.getProperty("spring.datasource.url"));
-				String username = firstPresent(values.get("CREATE_USER_DB_USERNAME"),
-					environment.getProperty("spring.datasource.username"));
-				String password = values.containsKey("CREATE_USER_DB_PASSWORD")
-					? nullToEmpty(values.get("CREATE_USER_DB_PASSWORD"))
-					: nullToEmpty(environment.getProperty("spring.datasource.password"));
-				if (url == null || username == null) {
-					throw new IllegalArgumentException(
-						"未找到数据库配置。请在项目目录运行，或设置 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME");
+				if (url == null) {
+					url = trimToNull(environment.getProperty("spring.datasource.url"));
 				}
-				return new DbConfig(url, username, password);
+				if (username == null) {
+					username = trimToNull(environment.getProperty("spring.datasource.username"));
+				}
+				if (!values.containsKey("CREATE_USER_DB_PASSWORD")) {
+					password = environment.getProperty("spring.datasource.password");
+				}
 			}
-			catch (IllegalArgumentException ex) {
-				if (ex.getMessage() != null && ex.getMessage().startsWith("未找到数据库配置")) {
-					throw ex;
-				}
+			catch (RuntimeException ex) {
+				// Placeholder errors can include the full configured URL or password.
 				throw new IllegalArgumentException("无法解析数据库配置，请检查统一配置中的占位符和环境变量。");
 			}
+			if (url == null || username == null) {
+				throw new IllegalArgumentException(
+					"统一配置缺少数据库连接信息，请检查当前 profile 或 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME。");
+			}
+			return new DbConfig(url, username, password == null ? "" : password);
 		}
 
 		private static Map<String, String> environmentOverrides() {
@@ -353,15 +358,6 @@ public final class CreateUserTool {
 			if (value != null) {
 				overrides.put(name, value);
 			}
-		}
-
-		private static String firstPresent(String override, String fallback) {
-			String value = trimToNull(override);
-			return value != null ? value : trimToNull(fallback);
-		}
-
-		private static String nullToEmpty(String value) {
-			return value == null ? "" : value;
 		}
 
 		private static String trimToNull(String value) {

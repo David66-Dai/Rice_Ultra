@@ -3,6 +3,7 @@ package com.smartrice.server.diagnosis;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartrice.server.diagnosis.StationAlertListResponse.StationAlertStatus;
+import com.smartrice.server.realtime.DeviceActivityService;
 import com.smartrice.server.realtime.DeviceCommandService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,11 +28,11 @@ public class DiagnosisService {
 
 	private final InferenceClient inference;
 	private final InspectionDiagnosisRepository diagnoses;
-	private final DeviceCommandService devices;
+	private final DeviceActivityService devices;
 	private final ObjectMapper json;
 
 	public DiagnosisService(InferenceClient inference, InspectionDiagnosisRepository diagnoses,
-			DeviceCommandService devices, ObjectMapper json) {
+			DeviceActivityService devices, ObjectMapper json) {
 		this.inference = inference;
 		this.diagnoses = diagnoses;
 		this.devices = devices;
@@ -66,7 +67,7 @@ public class DiagnosisService {
 		if (parsed.alert == AlertLevel.RED) {
 			String device = "leaf".equals(kind) ? DeviceCommandService.PUMP : DeviceCommandService.LAMP;
 			try {
-				devices.ensureEnabled(station, device, "diagnosis");
+				devices.enableFromDiagnosis("diagnosis", "系统识别", station, device);
 				activatedDevice = device;
 			}
 			catch (ResponseStatusException ex) {

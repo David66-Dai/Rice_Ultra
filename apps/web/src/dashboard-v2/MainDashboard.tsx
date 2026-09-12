@@ -10,6 +10,7 @@ import { EnvironmentAnalysis } from './EnvironmentAnalysis.tsx'
 import { FieldInspection } from './FieldInspection.tsx'
 import { HistoryTrace } from './HistoryTrace.tsx'
 import { HomeOverview } from './HomeOverview.tsx'
+import { NotificationCenter } from './NotificationCenter.tsx'
 import './MainDashboard.css'
 
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
@@ -266,7 +267,8 @@ export function MainDashboard() {
               </div>
             </div>
 
-            <button className="logout-button" type="button" onClick={handleLogout} disabled={leaving}>
+            <NotificationCenter />
+            <button className="logout-button" type="button" onClick={handleLogout} disabled={leaving} aria-label={leaving ? '正在退出登录' : '退出登录'} title="退出登录">
               <IconLogout size={17} />
               <span>{leaving ? '退出中' : '退出登录'}</span>
             </button>

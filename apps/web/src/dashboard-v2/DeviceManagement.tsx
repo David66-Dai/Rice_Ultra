@@ -1,91 +1,58 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeviceControlRequest, DeviceControlResponse, DeviceStatusResponse } from '@smart-rice-security/shared'
-import { useAuth } from '../auth/useAuth.ts'
+import { useRef, useState } from 'react'
+import { useDeviceSync } from '../devices/useDeviceSync.ts'
 import { describeError } from '../lib/api.ts'
-import { DEVICE_LABELS, DEVICE_STATE_CHANGED, deviceLabel, emitDeviceStateChanged } from '../lib/devices.ts'
+import { DEVICE_LABELS, emitDeviceStateChanged } from '../lib/devices.ts'
 import './DeviceManagement.css'
-
-type DeviceSwitches = {
-  pump: boolean
-  lamp: boolean
-}
-
-type DeviceKey = keyof DeviceSwitches
 
 const STATIONS = Array.from({ length: 10 }, (_, index) => ({
   id: `S${String(index + 1).padStart(2, '0')}`,
   name: `${index + 1}号监测站`,
-  online: index === 0,
+  configured: index === 0,
 }))
 
-function formatTime(date: Date) {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+const DEVICES = [
+  { key: 'pump', name: DEVICE_LABELS.pump, title: '智能喷药', code: 'CHEMICAL SPRAY · P-01' },
+  { key: 'lamp', name: DEVICE_LABELS.lamp, title: '智能驱虫灯', code: 'PEST CONTROL LAMP · L-01' },
+] as const
+
+function formatTime(value: string | null | undefined) {
+  if (!value) return '尚无记录'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '时间未提供'
+  return date.toLocaleString('zh-CN', { hour12: false })
 }
 
 export function DeviceManagement() {
-  const auth = useAuth()
+  const { snapshot, connection, error, controlDevice } = useDeviceSync()
   const [selectedStationId, setSelectedStationId] = useState('S01')
-  const [stationMenuOpen, setStationMenuOpen] = useState(false)
-  const [devices, setDevices] = useState<DeviceSwitches>({ pump: false, lamp: false })
-  const [lastAction, setLastAction] = useState('尚无控制操作')
-  const [sending, setSending] = useState<DeviceKey | null>(null)
+  const [sending, setSending] = useState<'pump' | 'lamp' | null>(null)
+  const sendingRef = useRef(false)
   const [controlError, setControlError] = useState<string | null>(null)
-  const sendingRef = useRef<DeviceKey | null>(null)
-  const hydratedRef = useRef(false)
   const selectedStation = STATIONS.find((station) => station.id === selectedStationId) ?? STATIONS[0]
+  const canSend = Boolean(snapshot?.canControl && snapshot.available && connection === 'connected' && selectedStation.configured)
+  const syncText = connection === 'connected' ? '实时同步已连接' : connection === 'reconnecting' ? '正在重新连接…' : '正在连接…'
+  const permissionText = !snapshot
+    ? '正在获取设备权限与最新指令状态…'
+    : !snapshot.canControl
+      ? '当前账号仅可查看。只有被授权的用户可以控制设备，请联系管理员开通权限。'
+      : !snapshot.available
+        ? '设备控制服务当前不可用，暂时无法发送指令。'
+        : connection !== 'connected'
+          ? '同步连接中断，显示最近记录；连接恢复后可继续控制设备。'
+          : '已获设备控制权限。指令发送成功后，所有在线用户的页面将自动更新。'
 
-  const loadState = useCallback(async () => {
-    if (selectedStationId !== 'S01' || sendingRef.current) return
-    try {
-      const status = await auth.request<DeviceStatusResponse>(
-        `/api/devices/state?stationId=${encodeURIComponent(selectedStationId)}`,
-      )
-      setDevices({ pump: status.pump, lamp: status.lamp })
-      setControlError(null)
-      if (!hydratedRef.current) {
-        setLastAction('已同步现场状态')
-        hydratedRef.current = true
-      }
-    } catch (error) {
-      setControlError(describeError(error))
-    }
-  }, [auth, selectedStationId])
-
-  useEffect(() => {
-    if (!selectedStation.online) return undefined
-    void loadState()
-    const timer = window.setInterval(() => { void loadState() }, 5_000)
-    const onChange = () => { void loadState() }
-    window.addEventListener(DEVICE_STATE_CHANGED, onChange)
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener(DEVICE_STATE_CHANGED, onChange)
-    }
-  }, [loadState, selectedStation.online])
-
-  async function toggleDevice(key: DeviceKey) {
-    if (!selectedStation.online || sending) return
-    const enabled = !devices[key]
-    const request: DeviceControlRequest = {
-      stationId: selectedStation.id,
-      device: key,
-      enabled,
-    }
-    sendingRef.current = key
-    setSending(key)
+  async function sendCommand(device: 'pump' | 'lamp', enabled: boolean) {
+    if (!canSend || sendingRef.current) return
+    sendingRef.current = true
+    setSending(device)
     setControlError(null)
     try {
-      const response = await auth.request<DeviceControlResponse>('/api/devices/control', {
-        method: 'POST',
-        body: request,
-      })
-      setDevices((current) => ({ ...current, [key]: response.enabled }))
-      setLastAction(`${formatTime(new Date(response.sentAt))} · ${deviceLabel(key)}${enabled ? '已开启' : '已关闭'} · ${response.command}`)
+      await controlDevice(selectedStation.id, device, enabled)
       emitDeviceStateChanged()
-    } catch (error) {
-      setControlError(describeError(error))
+    } catch (cause) {
+      setControlError(describeError(cause))
     } finally {
-      sendingRef.current = null
+      sendingRef.current = false
       setSending(null)
     }
   }
@@ -99,132 +66,81 @@ export function DeviceManagement() {
             <h2 id="device-title">设备管理</h2>
           </div>
           <div className="device-head__controls">
-            <div className="station-switch">
-              <button
-                type="button"
-                className="station-switch__trigger"
-                onClick={() => setStationMenuOpen((open) => !open)}
-                aria-expanded={stationMenuOpen}
-                aria-haspopup="listbox"
-              >
-                <span className={`station-switch__status${selectedStation.online ? '' : ' is-offline'}`}><i /></span>
-                <span>
-                  <small>当前站点</small>
-                  <strong>{selectedStation.id} · {selectedStation.name}</strong>
-                </span>
-                <b aria-hidden="true">⌄</b>
-              </button>
-
-              {stationMenuOpen && (
-                <div className="station-switch__menu" role="listbox" aria-label="选择设备站点">
-                  {STATIONS.map((station) => (
-                    <button
-                      key={station.id}
-                      type="button"
-                      className={`${station.id === selectedStationId ? 'is-selected' : ''}${station.online ? '' : ' is-offline'}`}
-                      onClick={() => {
-                        setSelectedStationId(station.id)
-                        setStationMenuOpen(false)
-                      }}
-                      role="option"
-                      aria-selected={station.id === selectedStationId}
-                    >
-                      <i />
-                      <span><strong>{station.id}</strong>{station.name}</span>
-                      <em>{station.online ? '在线' : '离线'}</em>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <span className={selectedStation.online ? '' : 'is-offline'}>
-              <i />{selectedStation.id} 设备{selectedStation.online ? '在线' : '离线'}
+            <label className="device-station-select">
+              <span>当前站点</span>
+              <select value={selectedStationId} onChange={(event) => {
+                setSelectedStationId(event.target.value)
+                setControlError(null)
+              }}>
+                {STATIONS.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.id} · {station.name}{station.configured ? '' : ' · 离线'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className={connection === 'connected' ? '' : 'is-offline'} role="status">
+              <i />{syncText}
             </span>
           </div>
         </header>
 
-        {selectedStation.online ? (
+        <div className={`device-permission${snapshot?.canControl ? ' is-authorized' : ''}`} role="status">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="m12 3 8 3v5c0 5-4 8-8 10-4-2-8-5-8-10V6l8-3Z" />
+            {snapshot?.canControl ? <path d="m8 12 3 3 5-6" /> : <path d="M12 8v5m0 3h.01" />}
+          </svg>
+          <p>{permissionText}</p>
+        </div>
+
+        {selectedStation.configured ? (
           <>
             <div className="device-grid">
-              <article className={`device-card device-card--pump${devices.pump ? ' is-running' : ''}`}>
-                <header>
-                  <div className="device-card__identity">
-                    <div className="device-card__icon device-card__icon--pump" aria-hidden="true"><i /></div>
-                    <div>
-                      <small>CHEMICAL SPRAY · P-01</small>
-                      <h3>智能喷药</h3>
+              {DEVICES.map((device) => {
+                const state = snapshot?.devices.find((item) => item.stationId === selectedStation.id && item.device === device.key)
+                const enabled = state?.enabled ?? null
+                const status = enabled === null ? '未知' : enabled ? '开启' : '关闭'
+                return (
+                  <article key={device.key} className={`device-card device-card--${device.key}${enabled === true ? ' is-running' : ''}${enabled === null ? ' is-unknown' : ''}`}>
+                    <header>
+                      <div className="device-card__identity">
+                        <div className={`device-card__icon device-card__icon--${device.key}`} aria-hidden="true"><i /></div>
+                        <div><small>{device.code}</small><h3>{device.title}</h3></div>
+                      </div>
+                      <span className="device-card__status" aria-live="polite"><i />上次指令：{status}</span>
+                    </header>
+
+                    <div className={`device-card__visual device-card__visual--${device.key}`} aria-hidden="true">
+                      <div className={`${device.key}-core`}><i /><span /></div>
+                      <div className={device.key === 'pump' ? 'pump-flow' : 'lamp-wave'}><i /><i /><i /></div>
                     </div>
-                  </div>
-                  <span className="device-card__status"><i />{devices.pump ? '运行中' : '已关闭'}</span>
-                </header>
 
-                <div className="device-card__visual device-card__visual--pump" aria-hidden="true">
-                  <div className="pump-core"><i /><span /></div>
-                  <div className="pump-flow"><i /><i /><i /></div>
-                </div>
+                    <p className="device-card__feedback">{enabled === null ? state?.updatedAt ? '指令结果不确定，请检查设备实际状态' : '尚无成功发送的指令记录' : '指令已发送 · 实际运行状态待设备反馈'}</p>
+                    <dl className="device-card__history">
+                      <div><dt>最近操作者</dt><dd title={state?.updatedBy ?? undefined}>{state?.updatedBy ?? '尚无记录'}</dd></div>
+                      <div><dt>指令时间</dt><dd title={formatTime(state?.updatedAt)}>{formatTime(state?.updatedAt)}</dd></div>
+                    </dl>
 
-                <dl>
-                  <div><dt>工作模式</dt><dd>{devices.pump ? '叶害喷药' : '待机'}</dd></div>
-                  <div><dt>瞬时流量</dt><dd>{devices.pump ? '18.6' : '0.0'}<small>m³/h</small></dd></div>
-                  <div><dt>运行功率</dt><dd>{devices.pump ? '1.5' : '0.0'}<small>kW</small></dd></div>
-                  <div><dt>管路压力</dt><dd>{devices.pump ? '0.32' : '0.00'}<small>MPa</small></dd></div>
-                </dl>
-
-                <button
-                  type="button"
-                  className="device-switch"
-                  role="switch"
-                  aria-checked={devices.pump}
-                  disabled={sending !== null}
-                  onClick={() => toggleDevice('pump')}
-                >
-                  <span><i /></span>
-                  <strong>{sending === 'pump' ? '正在发送指令…' : devices.pump ? `关闭${DEVICE_LABELS.pump} · FA03` : `开启${DEVICE_LABELS.pump} · FA01`}</strong>
-                </button>
-              </article>
-
-              <article className={`device-card device-card--lamp${devices.lamp ? ' is-running' : ''}`}>
-                <header>
-                  <div className="device-card__identity">
-                    <div className="device-card__icon device-card__icon--lamp" aria-hidden="true"><i /></div>
-                    <div>
-                      <small>PEST CONTROL LAMP · L-01</small>
-                      <h3>智能驱虫灯</h3>
+                    <div className="device-actions" role="group" aria-label={`${device.name}控制`}>
+                      <button type="button" className="device-action device-action--on" disabled={!canSend || sending !== null} onClick={() => sendCommand(device.key, true)}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v9m-5-7a8 8 0 1 0 10 0" /></svg>
+                        开启{device.name}
+                      </button>
+                      <button type="button" className="device-action device-action--off" disabled={!canSend || sending !== null} onClick={() => sendCommand(device.key, false)}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+                        关闭{device.name}
+                      </button>
                     </div>
-                  </div>
-                  <span className="device-card__status"><i />{devices.lamp ? '运行中' : '已关闭'}</span>
-                </header>
-
-                <div className="device-card__visual device-card__visual--lamp" aria-hidden="true">
-                  <div className="lamp-core"><i /><span /></div>
-                  <div className="lamp-wave"><i /><i /><i /></div>
-                </div>
-
-                <dl>
-                  <div><dt>工作模式</dt><dd>{devices.lamp ? '光控诱虫' : '待机'}</dd></div>
-                  <div><dt>诱虫波长</dt><dd>365<small>nm</small></dd></div>
-                  <div><dt>运行功率</dt><dd>{devices.lamp ? '24' : '0'}<small>W</small></dd></div>
-                  <div><dt>覆盖面积</dt><dd>120<small>m²</small></dd></div>
-                </dl>
-
-                <button
-                  type="button"
-                  className="device-switch"
-                  role="switch"
-                  aria-checked={devices.lamp}
-                  disabled={sending !== null}
-                  onClick={() => toggleDevice('lamp')}
-                >
-                  <span><i /></span>
-                  <strong>{sending === 'lamp' ? '正在发送指令…' : devices.lamp ? `关闭${DEVICE_LABELS.lamp} · FA04` : `开启${DEVICE_LABELS.lamp} · FA02`}</strong>
-                </button>
-              </article>
+                    <p className="device-card__sending" role="status">{sending === device.key ? '正在发送指令，请稍候…' : !snapshot?.canControl && snapshot ? '仅查看 · 无控制权限' : '开启与关闭均会记录操作者并通知所有用户'}</p>
+                  </article>
+                )
+              })}
             </div>
 
             <footer className="device-console__footer">
-              <span className={controlError ? 'is-error' : ''}><i />{controlError ? '控制指令失败' : '控制链路正常'}</span>
-              <p>{controlError ? `错误：${controlError}` : `最近操作：${lastAction}`}</p>
-              <small>安全策略：设备切换指令需在线站点确认；状态与田间巡检联动同步</small>
+              <span className={controlError || error || connection !== 'connected' ? 'is-error' : ''}><i />{controlError ? '控制指令失败' : syncText}</span>
+              <p role={controlError || error ? 'alert' : undefined}>{controlError || error || '显示最近成功发送的指令，不代表设备已确认执行。'}</p>
+              <small>所有用户共享指令记录，并与识别告警联动</small>
             </footer>
           </>
         ) : (

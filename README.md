@@ -113,7 +113,7 @@ npm run web
 
 局域网给同学访问：本机同时开着网页端和 Java 后端，终端里会打印 `Network: http://192.168.x.x:5173`，把这个地址发给同一 Wi‑Fi 下的朋友即可（不要发 localhost）。改完 CORS / Vite 配置后请**重启** `npm run web` 和 Java 后端。若打不开，在 Windows 防火墙里允许 Node.js 的专用网络入站，或临时允许 5173 端口。
 
-打开即为登录页；开发模式下 `/api` 由 Vite 代理到 `http://127.0.0.1:8080`，无需处理 CORS。后端不在本机时复制 `apps/web/.env.example` 为 `.env.local` 并填写 `VITE_API_BASE`。
+打开即为登录页；开发模式下 `/api` 由 Vite 代理到 `http://127.0.0.1:8185`，无需处理 CORS。后端不在本机时复制 `apps/web/.env.example` 为 `.env.local` 并填写 `VITE_API_BASE`。
 
 ### 3. Java 后端
 
@@ -123,7 +123,7 @@ cd server
 ```
 
 - 默认使用 **MySQL** 库 `rice_ultra`（连接见 `conf/config.yaml` 的 mysql 文档）
-- 健康检查：http://127.0.0.1:8080/api/health
+- 健康检查：http://127.0.0.1:8185/api/health
 - 首次需执行 `server/sql/init.sql` 建表，再通过初始化配置或账号脚本创建账号
 - 没有 MySQL 时改回内存 H2：
 
@@ -163,6 +163,8 @@ cd server
 
 设备控制现支持指定用户名授权、跨网页实时状态同步，以及右上角设备操作/病虫害通知。
 配置和接口说明见 [设备权限与通知](docs/device-permissions-and-notifications.md)。
+AstrBot 适配插件与安装说明见
+[integrations/astrbot_plugin_agri_control](integrations/astrbot_plugin_agri_control/README.md)。
 
 #### 历史数据
 

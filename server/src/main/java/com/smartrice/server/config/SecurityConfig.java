@@ -6,6 +6,7 @@ import com.smartrice.server.auth.JwtService;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
+import jakarta.servlet.DispatcherType;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
@@ -114,8 +115,12 @@ public class SecurityConfig {
 			.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.headers(h -> h.frameOptions(f -> f.sameOrigin()))
 			.authorizeHttpRequests(auth -> auth
+				// DeferredResult resumes an already authenticated request; the activity
+				// service also rechecks the current database user before completing it.
+				.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-				.requestMatchers("/api/health", "/api/auth/login", "/api/auth/remember", "/api/auth/logout").permitAll()
+				.requestMatchers("/api/health", "/api/auth/login", "/api/auth/remember", "/api/auth/logout",
+					"/api/astrbot/devices/**").permitAll()
 				.requestMatchers("/h2-console/**", "/error").permitAll()
 				.anyRequest().authenticated())
 			.oauth2ResourceServer(rs -> rs

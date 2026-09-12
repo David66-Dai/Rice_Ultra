@@ -138,9 +138,25 @@ CREATE TABLE IF NOT EXISTS station_device (
   id          BIGINT       NOT NULL AUTO_INCREMENT,
   station_id  VARCHAR(8)   NOT NULL,
   device      VARCHAR(16)  NOT NULL,
-  enabled     BIT(1)       NOT NULL DEFAULT b'0',
+  enabled     BIT(1)       NULL,
+  revision    BIGINT       NOT NULL DEFAULT 0,
   updated_at  DATETIME(6)  NOT NULL,
   updated_by  VARCHAR(64)  NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_station_device (station_id, device)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Persisted safety timers for AstrBot ON commands. Outstanding rows are stopped on restart.
+CREATE TABLE IF NOT EXISTS astrbot_scheduled_stop (
+  request_id VARCHAR(36) NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  display_name VARCHAR(64) NULL,
+  station_id VARCHAR(8) NOT NULL,
+  device VARCHAR(16) NOT NULL,
+  expected_revision BIGINT NOT NULL,
+  due_at DATETIME(6) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  fingerprint VARCHAR(64) NOT NULL,
+  PRIMARY KEY (request_id),
+  KEY idx_astrbot_stop_status_due (status, due_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

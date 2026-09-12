@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type { DiagnosisRecord, DiagnosisTask, StationAlertStatus } from '@smart-rice-security/shared'
+import { createCameraSession } from '../lib/inspection-camera'
+import type { CameraStatus } from '../lib/inspection-camera'
 import { useAuth } from '../auth/useAuth.ts'
 import { describeError } from '../lib/api.ts'
 import {
@@ -41,34 +43,8 @@ const INSPECTION_STATIONS: InspectionStation[] = [
   { id: 'S10', name: '10号监测站', cameraCount: 2, temperature: null, humidity: null },
 ]
 
-type CameraStatus = 'requesting' | 'live' | 'offline' | 'denied' | 'unavailable' | 'error'
-
 const LIVE_STATION_ID = 'S01'
-const LIVE_CAMERA_INDEX = 1
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp'
-
-function isLiveCamera(stationId: string, cameraIndex: number) {
-  return stationId === LIVE_STATION_ID && cameraIndex === LIVE_CAMERA_INDEX
-}
-
-function stopStream(stream: MediaStream | null) {
-  stream?.getTracks().forEach((track) => track.stop())
-}
-
-function cameraErrorText(error: unknown) {
-  if (error instanceof DOMException) {
-    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-      return '浏览器未授权摄像头，请允许后刷新页面'
-    }
-    if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
-      return '未检测到可用摄像头'
-    }
-    if (error.name === 'NotReadableError') {
-      return '摄像头被其他程序占用'
-    }
-  }
-  return '摄像头启动失败，请检查设备连接'
-}
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -171,14 +147,12 @@ export function FieldInspection() {
   const auth = useAuth()
   const { byId, refresh } = useStationAlerts()
   const [stationId, setStationId] = useState('S01')
-  const [cameraIndex, setCameraIndex] = useState(1)
+  const [offlineCameraIndex, setOfflineCameraIndex] = useState(1)
+  const [selectedDeviceId, setSelectedDeviceId] = useState('')
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [cameraStatus, setCameraStatus] = useState<CameraStatus>(() => (
-    isLiveCamera('S01', 1) ? 'requesting' : 'offline'
-  ))
-  const [cameraMessage, setCameraMessage] = useState('正在连接摄像头…')
+  const [connectionStatus, setCameraStatus] = useState<CameraStatus>('requesting')
+  const [connectionMessage, setCameraMessage] = useState('正在连接摄像头…')
   const [videoSize, setVideoSize] = useState('— × —')
-  const [restartKey, setRestartKey] = useState(0)
   const [now, setNow] = useState(() => new Date())
   const [uploading, setUploading] = useState<DiagnosisTask | null>(null)
   const [leafError, setLeafError] = useState<string | null>(null)
@@ -189,8 +163,7 @@ export function FieldInspection() {
   const [captureError, setCaptureError] = useState<string | null>(null)
   const [flashing, setFlashing] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const devicesRef = useRef<MediaDeviceInfo[]>([])
+  const sessionRef = useRef<ReturnType<typeof createCameraSession> | null>(null)
   const leafInputRef = useRef<HTMLInputElement>(null)
   const pestInputRef = useRef<HTMLInputElement>(null)
 
@@ -201,11 +174,17 @@ export function FieldInspection() {
   const stationOnline = canDiagnoseStation(station.id)
   const alert = byId[station.id]
   const stationLevel = stationVisualLevel(stationOnline, alert?.alertLevel)
-  const liveFeed = isLiveCamera(stationId, cameraIndex)
-  const selectedDevice = liveFeed && devices.length > 0 ? devices[0] : undefined
+  const liveFeed = stationId === LIVE_STATION_ID
+  const cameraSupported = Boolean(navigator.mediaDevices?.getUserMedia)
+  const cameraStatus = !liveFeed ? 'offline' : !cameraSupported ? 'unavailable' : connectionStatus
+  const cameraMessage = !liveFeed
+    ? '该站点尚未接入摄像头，本机摄像头请在 1 号监测站选择'
+    : !cameraSupported ? '当前页面无法访问摄像头，请使用 HTTPS 或 localhost 并检查浏览器支持' : connectionMessage
+  const cameraIndex = liveFeed ? Math.max(1, devices.findIndex(device => device.deviceId === selectedDeviceId) + 1) : offlineCameraIndex
+  const selectedDevice = liveFeed ? devices.find(device => device.deviceId === selectedDeviceId) : undefined
   const leafCopy = leafCardCopy(alert, uploading === 'leaf', leafError, stationOnline, leafHint)
   const pestCopy = pestCardCopy(alert, uploading === 'pest', pestError, stationOnline, pestHint)
-  const hyperspectral = useMemo(() => buildHyperspectralReading(stationOnline), [stationOnline])
+  const hyperspectral = buildHyperspectralReading(stationOnline)
   const canCapture = canCaptureMonitor(stationOnline, cameraStatus === 'live', uploading !== null)
 
   useEffect(() => {
@@ -214,23 +193,38 @@ export function FieldInspection() {
   }, [])
 
   useEffect(() => {
+    const video = videoRef.current
+    if (!liveFeed || !cameraSupported) return
+    const session = createCameraSession(navigator.mediaDevices, (state) => {
+      setDevices(state.devices)
+      setSelectedDeviceId(state.selectedDeviceId)
+      setCameraStatus(state.status)
+      setCameraMessage(state.message)
+      if (!state.stream) setVideoSize('— × —')
+      if (video && video.srcObject !== state.stream) {
+        video.srcObject = state.stream
+        if (state.stream) void video.play().catch(() => undefined)
+      }
+    })
+    sessionRef.current = session
+    void session.start()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void session.refresh()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      session.dispose()
+      sessionRef.current = null
+      if (video) video.srcObject = null
+    }
+  }, [liveFeed, cameraSupported])
+
+  useEffect(() => {
     return () => {
       if (capture) URL.revokeObjectURL(capture.previewUrl)
     }
   }, [capture])
-
-  useLiveCamera({
-    stationId,
-    cameraIndex,
-    restartKey,
-    videoRef,
-    streamRef,
-    devicesRef,
-    setDevices,
-    setCameraStatus,
-    setCameraMessage,
-    setVideoSize,
-  })
 
   function handleVideoMeta() {
     const video = videoRef.current
@@ -245,7 +239,8 @@ export function FieldInspection() {
 
   function selectStation(id: string) {
     setStationId(id)
-    setCameraIndex(1)
+    setOfflineCameraIndex(1)
+    if (id !== stationId) setVideoSize('— × —')
     setLeafError(null)
     setPestError(null)
     setLeafHint(null)
@@ -254,10 +249,7 @@ export function FieldInspection() {
   }
 
   function retryCamera() {
-    if (!isLiveCamera(stationId, cameraIndex)) return
-    setCameraStatus('requesting')
-    setCameraMessage('正在重新连接摄像头…')
-    setRestartKey((value) => value + 1)
+    void sessionRef.current?.retry()
   }
 
   async function upload(task: DiagnosisTask, file: File) {
@@ -427,22 +419,35 @@ export function FieldInspection() {
               <select value={stationId} onChange={(event) => selectStation(event.target.value)}>
                 {INSPECTION_STATIONS.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.id} · {item.name}{item.id === LIVE_STATION_ID ? '（1号在线）' : '（未连接）'}
+                    {item.id} · {item.name}{item.id === LIVE_STATION_ID ? `（已发现 ${devices.length} 台）` : '（未连接）'}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              <span>选择摄像头</span>
-              <select value={cameraIndex} onChange={(event) => {
-                closeCapture()
-                setCameraIndex(Number(event.target.value))
-              }}>
-                {Array.from({ length: station.cameraCount }, (_, index) => (
-                  <option key={index + 1} value={index + 1}>
-                    摄像头 {pad(index + 1)}{isLiveCamera(stationId, index + 1) ? '（在线）' : '（未连接）'}
-                  </option>
-                ))}
+              <span>{liveFeed ? `选择摄像头 · 已发现 ${devices.length} 台` : '选择摄像头'}</span>
+              <select
+                value={liveFeed ? selectedDeviceId : offlineCameraIndex}
+                disabled={liveFeed && devices.length === 0}
+                onChange={(event) => {
+                  closeCapture()
+                  if (liveFeed) {
+                    void sessionRef.current?.select(event.target.value)
+                  } else {
+                    setOfflineCameraIndex(Number(event.target.value))
+                  }
+                }}
+              >
+                {liveFeed ? <>
+                  {!selectedDevice && <option value={selectedDeviceId}>{cameraStatus === 'requesting' ? '正在检测摄像头…' : '请选择可用摄像头'}</option>}
+                  {devices.map((device, index) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      摄像头 {pad(index + 1)} · {device.label || `视频设备 ${index + 1}`}
+                    </option>
+                  ))}
+                </> : Array.from({ length: station.cameraCount }, (_, index) => (
+                    <option key={index + 1} value={index + 1}>摄像头 {pad(index + 1)}（未连接）</option>
+                  ))}
               </select>
             </label>
             <div className="camera-controls__capture">
@@ -463,6 +468,10 @@ export function FieldInspection() {
               </strong>
             </div>
           </div>
+          {liveFeed && <div className="camera-discovery">
+            <span role="status">{cameraMessage} · 自动检测站点摄像头，插拔后更新列表</span>
+            <button type="button" onClick={() => { void sessionRef.current?.refresh() }}>重新检测</button>
+          </div>}
           {captureError && !capture && (
             <p className="camera-capture-error" role="status">{captureError}</p>
           )}
@@ -593,110 +602,4 @@ export function FieldInspection() {
       </section>
     </div>
   )
-}
-
-function useLiveCamera(options: {
-  stationId: string
-  cameraIndex: number
-  restartKey: number
-  videoRef: { current: HTMLVideoElement | null }
-  streamRef: { current: MediaStream | null }
-  devicesRef: { current: MediaDeviceInfo[] }
-  setDevices: (devices: MediaDeviceInfo[]) => void
-  setCameraStatus: (status: CameraStatus) => void
-  setCameraMessage: (message: string) => void
-  setVideoSize: (size: string) => void
-}) {
-  const {
-    stationId,
-    cameraIndex,
-    restartKey,
-    videoRef,
-    streamRef,
-    devicesRef,
-    setDevices,
-    setCameraStatus,
-    setCameraMessage,
-    setVideoSize,
-  } = options
-
-  useEffect(() => {
-    let cancelled = false
-
-    function releaseCamera() {
-      stopStream(streamRef.current)
-      streamRef.current = null
-      if (videoRef.current) videoRef.current.srcObject = null
-    }
-
-    async function startCamera() {
-      if (!isLiveCamera(stationId, cameraIndex)) {
-        releaseCamera()
-        setCameraStatus('offline')
-        setCameraMessage('该机位未接入，当前仅 1 号监测站 01 号摄像头在线')
-        setVideoSize('— × —')
-        return
-      }
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraStatus('unavailable')
-        setCameraMessage('当前浏览器不支持摄像头访问')
-        return
-      }
-
-      setCameraStatus('requesting')
-      setCameraMessage('正在连接摄像头…')
-      releaseCamera()
-
-      const target = devicesRef.current[0]
-
-      try {
-        const constraints: MediaStreamConstraints = {
-          video: {
-            ...(target ? { deviceId: { exact: target.deviceId } } : {}),
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-          audio: false,
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-        if (cancelled) {
-          stopStream(stream)
-          return
-        }
-
-        streamRef.current = stream
-        const video = videoRef.current
-        if (video) {
-          video.srcObject = stream
-          video.muted = true
-          await video.play().catch(() => undefined)
-        }
-
-        const listed = await navigator.mediaDevices.enumerateDevices()
-        if (!cancelled) {
-          const cameras = listed.filter((item) => item.kind === 'videoinput')
-          devicesRef.current = cameras
-          setDevices(cameras)
-          setCameraStatus('live')
-          setCameraMessage('传输正常')
-        }
-      } catch (error) {
-        if (cancelled) return
-        const denied = error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')
-        const missing = error instanceof DOMException && (error.name === 'NotFoundError' || error.name === 'OverconstrainedError')
-        setCameraStatus(denied ? 'denied' : missing ? 'unavailable' : 'error')
-        setCameraMessage(cameraErrorText(error))
-        setVideoSize('— × —')
-      }
-    }
-
-    void startCamera()
-
-    return () => {
-      cancelled = true
-      releaseCamera()
-    }
-  }, [stationId, cameraIndex, restartKey, videoRef, streamRef, devicesRef, setDevices, setCameraStatus, setCameraMessage, setVideoSize])
 }

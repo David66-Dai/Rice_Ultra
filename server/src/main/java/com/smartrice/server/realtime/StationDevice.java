@@ -26,8 +26,11 @@ public class StationDevice {
 	@Column(nullable = false, length = 16)
 	private String device;
 
+	@Column
+	private Boolean enabled;
+
 	@Column(nullable = false)
-	private boolean enabled;
+	private long revision;
 
 	@Column(name = "updated_at", nullable = false)
 	private Instant updatedAt;
@@ -58,12 +61,20 @@ public class StationDevice {
 		this.device = device;
 	}
 
-	public boolean isEnabled() {
+	public Boolean isEnabled() {
 		return enabled;
 	}
 
-	public void setEnabled(boolean enabled) {
+	public void setEnabled(Boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public long getRevision() {
+		return revision;
+	}
+
+	public void setRevision(long revision) {
+		this.revision = revision;
 	}
 
 	public Instant getUpdatedAt() {

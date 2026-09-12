@@ -18,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.smartrice.server.diagnosis.InferenceClient;
 import com.smartrice.server.diagnosis.InspectionDiagnosisRepository;
+import com.smartrice.server.auth.UserAccount;
+import com.smartrice.server.auth.UserAccountRepository;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,13 +29,16 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class DeviceControlFlowTests {
 
 	@Autowired
@@ -45,16 +50,38 @@ class DeviceControlFlowTests {
 	@Autowired
 	InspectionDiagnosisRepository diagnoses;
 
+	@Autowired
+	UserAccountRepository users;
+
+	@Autowired
+	DevicesProperties permissions;
+
 	@MockitoBean
 	DeviceActuator actuator;
 
 	@MockitoBean
 	InferenceClient inference;
 
+	private UserAccount operator;
+
 	@BeforeEach
 	void reset() {
 		diagnoses.deleteAll();
 		devices.deleteAll();
+		users.deleteAll();
+		operator = new UserAccount();
+		operator.setUsername("operator");
+		operator.setDisplayName("操作员");
+		operator.setPasswordHash("{noop}test-only");
+		operator.setRole("ADMIN");
+		operator = users.saveAndFlush(operator);
+		permissions.setControlUsers(List.of("operator"));
+		when(actuator.isAvailable()).thenReturn(true);
+	}
+
+	private RequestPostProcessor jwt() {
+		return org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+			.jwt(token -> token.claim("uid", operator.getId()));
 	}
 
 	@Test

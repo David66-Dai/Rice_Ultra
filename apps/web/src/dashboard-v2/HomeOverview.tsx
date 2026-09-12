@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { RealtimeSensorReading, StationAlertLevel } from '@smart-rice-security/shared'
 import riceArea from '../assets/rice_area.png'
 import { useAuth } from '../auth/useAuth.ts'
+import { REALTIME_SYNC_INTERVAL_MS } from '../lib/realtime'
 import { stationLevelLabel, stationPointClass } from '../lib/station-alerts.ts'
 import { useStationAlerts } from './useStationAlerts.ts'
 import './HomeOverview.css'
@@ -85,29 +86,35 @@ export function HomeOverview() {
         ? '等待串口数据'
         : metric.key === 'rain'
           ? 'Open-Meteo 当前小时'
-          : 'COM4 实时采集',
+          : '传感器实时采集',
     }
   }), [latest])
 
   useEffect(() => {
     if (selectedId !== 'S01') return
     let cancelled = false
+    let inFlight = false
+    const controller = new AbortController()
 
     function loadLatest() {
-      auth.request<RealtimeSensorReading>('/api/realtime/latest?stationId=S01')
+      if (cancelled || inFlight) return
+      inFlight = true
+      auth.request<RealtimeSensorReading>('/api/realtime/latest?stationId=S01', { signal: controller.signal })
         .then((reading) => {
           if (!cancelled) setLatest(reading)
         })
         .catch(() => {
           // 串口尚未形成完整数据帧时保持空值
         })
+        .finally(() => { inFlight = false })
     }
 
     loadLatest()
-    const timer = window.setInterval(loadLatest, 5_000)
+    const timer = window.setInterval(loadLatest, REALTIME_SYNC_INTERVAL_MS)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      controller.abort()
     }
   }, [auth, selectedId])
 

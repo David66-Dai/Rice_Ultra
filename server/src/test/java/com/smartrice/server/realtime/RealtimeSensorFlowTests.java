@@ -18,10 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
-@TestPropertySource(properties = {
-	"app.auth.bootstrap-admin.enabled=false",
-	"app.history.seed.enabled=false"
-})
+@TestPropertySource(properties = "app.auth.bootstrap-admin.enabled=false")
 class RealtimeSensorFlowTests {
 
 	@Autowired

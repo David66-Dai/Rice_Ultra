@@ -1,6 +1,7 @@
 package com.smartrice.server.realtime;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.ObjectProvider;
@@ -8,6 +9,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * The single low-level path for device state and actuator writes.
+ * Authorization, notifications and client synchronization live in {@link DeviceActivityService}.
+ */
 @Service
 public class DeviceCommandService {
 
@@ -30,54 +35,105 @@ public class DeviceCommandService {
 		StationDevice lamp = devices.findByStationIdAndDevice(station, LAMP).orElse(null);
 		return new DeviceStatusResponse(
 			station,
-			pump != null && pump.isEnabled(),
-			lamp != null && lamp.isEnabled(),
+			pump != null && Boolean.TRUE.equals(pump.isEnabled()),
+			lamp != null && Boolean.TRUE.equals(lamp.isEnabled()),
 			latest(pump == null ? null : pump.getUpdatedAt(), lamp == null ? null : lamp.getUpdatedAt())
 		);
 	}
 
-	public DeviceControlResponse ensureEnabled(String stationId, String device, String actor) {
-		return apply(stationId, device, true, actor);
+	public List<DeviceState> states() {
+		return List.of(state(CONTROL_STATION, PUMP), state(CONTROL_STATION, LAMP));
 	}
 
-	public DeviceControlResponse apply(String stationId, String device, boolean enabled, String actor) {
+	public DeviceState state(String stationId, String device) {
+		String station = validateControlStation(stationId);
+		String kind = validateDevice(device);
+		return devices.findByStationIdAndDevice(station, kind)
+			.map(DeviceCommandService::toState)
+			.orElseGet(() -> new DeviceState(station, kind, null, 0, null, null));
+	}
+
+	public boolean available() {
+		DeviceActuator actuator = actuators.getIfAvailable();
+		return actuator != null && actuator.isAvailable();
+	}
+
+	/** Must be called inside the caller's database transaction. */
+	public DeviceControlResponse apply(String stationId, String device, boolean enabled,
+			long expectedRevision, String actor, Runnable beforeWrite) {
+		String station = validateControlStation(stationId);
+		String kind = validateDevice(device);
+		StationDevice row = devices.findByStationIdAndDevice(station, kind).orElse(null);
+		DeviceState previous = row == null
+			? new DeviceState(station, kind, null, 0, null, null)
+			: toState(row);
+		if (previous.revision() != expectedRevision) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "设备状态已被其他操作更新，请同步最新状态后重试");
+		}
+		DeviceActuator actuator = actuators.getIfAvailable();
+		if (actuator == null || !actuator.isAvailable()) {
+			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "设备串口当前未连接");
+		}
+		int code = commandCode(kind, enabled);
+		beforeWrite.run();
+		try {
+			actuator.sendCommand(code);
+		}
+		catch (IllegalStateException ex) {
+			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+				ex.getMessage() == null ? "设备指令发送失败，请检查设备连接" : ex.getMessage(), ex);
+		}
+		Instant now = Instant.now();
+		if (row == null) {
+			row = new StationDevice();
+			row.setStationId(station);
+			row.setDevice(kind);
+		}
+		row.setEnabled(enabled);
+		row.setRevision(previous.revision() + 1);
+		row.setUpdatedAt(now);
+		row.setUpdatedBy(truncate(actor, 64));
+		StationDevice saved = devices.saveAndFlush(row);
+		return response(toState(saved), code);
+	}
+
+	/** Persists an uncertain result after a possibly partial hardware write. */
+	public DeviceState markUnknown(String stationId, String device, String actor,
+			long previousRevision, Instant attemptedAt) {
+		String station = validateControlStation(stationId);
+		String kind = validateDevice(device);
+		StationDevice row = devices.findByStationIdAndDevice(station, kind).orElse(null);
+		long uncertainRevision = previousRevision + 1;
+		if (row != null && row.getRevision() > uncertainRevision) {
+			return toState(row);
+		}
+		if (row == null) {
+			row = new StationDevice();
+			row.setStationId(station);
+			row.setDevice(kind);
+		}
+		row.setEnabled(null);
+		row.setRevision(Math.max(row.getRevision(), uncertainRevision));
+		row.setUpdatedAt(attemptedAt);
+		row.setUpdatedBy(truncate(actor, 64));
+		return toState(devices.saveAndFlush(row));
+	}
+
+	public DeviceControlResponse noOpResponse(String stationId, String device, boolean enabled) {
+		DeviceState current = state(stationId, device);
+		DeviceState effective = current.enabled() == null && !enabled
+			? new DeviceState(current.stationId(), current.device(), false, current.revision(),
+				current.updatedAt(), current.updatedBy())
+			: current;
+		return response(effective, commandCode(effective.device(), enabled));
+	}
+
+	private static String validateControlStation(String stationId) {
 		String station = validateStation(stationId);
 		if (!CONTROL_STATION.equals(station)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前仅 S01 支持设备控制");
 		}
-		String kind = validateDevice(device);
-		if (isEnabled(station, kind) == enabled) {
-			return new DeviceControlResponse(station, kind, enabled, commandName(kind, enabled), Instant.now());
-		}
-		send(commandCode(kind, enabled));
-		Instant now = Instant.now();
-		StationDevice row = devices.findByStationIdAndDevice(station, kind).orElseGet(StationDevice::new);
-		row.setStationId(station);
-		row.setDevice(kind);
-		row.setEnabled(enabled);
-		row.setUpdatedAt(now);
-		row.setUpdatedBy(truncate(actor, 64));
-		devices.save(row);
-		return new DeviceControlResponse(station, kind, enabled, commandName(kind, enabled), now);
-	}
-
-	private boolean isEnabled(String stationId, String device) {
-		return devices.findByStationIdAndDevice(stationId, device)
-			.map(StationDevice::isEnabled)
-			.orElse(false);
-	}
-
-	private void send(int commandCode) {
-		DeviceActuator actuator = actuators.getIfAvailable();
-		if (actuator == null) {
-			return;
-		}
-		try {
-			actuator.sendCommand(commandCode);
-		}
-		catch (IllegalStateException ex) {
-			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), ex);
-		}
+		return station;
 	}
 
 	private static String validateStation(String stationId) {
@@ -106,6 +162,17 @@ public class DeviceCommandService {
 
 	private static String commandName(String device, boolean enabled) {
 		return "FA%02X".formatted(commandCode(device, enabled));
+	}
+
+	private static DeviceState toState(StationDevice row) {
+		return new DeviceState(row.getStationId(), row.getDevice(), row.isEnabled(), row.getRevision(),
+			row.getUpdatedAt(), row.getUpdatedBy());
+	}
+
+	private static DeviceControlResponse response(DeviceState state, int code) {
+		Instant sentAt = state.updatedAt() == null ? Instant.now() : state.updatedAt();
+		return new DeviceControlResponse(state.stationId(), state.device(), Boolean.TRUE.equals(state.enabled()),
+			"FA%02X".formatted(code), sentAt, state);
 	}
 
 	private static Instant latest(Instant left, Instant right) {
