@@ -1,5 +1,20 @@
 -- Apply to the EXISTING application's MySQL database (select that database first).
 -- Additive and idempotent; does not create accounts or change device permissions.
+CREATE TABLE IF NOT EXISTS station_device (
+  id          BIGINT       NOT NULL AUTO_INCREMENT,
+  station_id  VARCHAR(8)   NOT NULL,
+  device      VARCHAR(16)  NOT NULL,
+  enabled     BIT(1)       NULL,
+  revision    BIGINT       NOT NULL DEFAULT 0,
+  updated_at  DATETIME(6)  NOT NULL,
+  updated_by  VARCHAR(64)  NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_station_device (station_id, device)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE station_device MODIFY COLUMN enabled BIT(1) NULL;
+ALTER TABLE station_device ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS platform_notification (
   id BIGINT NOT NULL AUTO_INCREMENT,
   type VARCHAR(32) NOT NULL,

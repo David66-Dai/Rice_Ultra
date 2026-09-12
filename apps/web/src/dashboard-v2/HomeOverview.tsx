@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { RealtimeSensorReading } from '@smart-rice-security/shared'
+import type { RealtimeSensorReading, StationAlertLevel } from '@smart-rice-security/shared'
 import riceArea from '../assets/rice_area.png'
 import { useAuth } from '../auth/useAuth.ts'
 import { REALTIME_SYNC_INTERVAL_MS } from '../lib/realtime'
+import { stationLevelLabel, stationPointClass } from '../lib/station-alerts.ts'
+import { useStationAlerts } from './useStationAlerts.ts'
 import './HomeOverview.css'
 
 type Station = {
@@ -54,16 +56,26 @@ const FIELD_METRICS = [
   { key: 'conductivity', field: 'soilEcMsCm', icon: 'EC', label: '土壤电导率', unit: 'mS/cm', decimals: 1, scaleMax: 3 },
 ] as const
 
+function alertClass(alert: StationAlertLevel | undefined) {
+  if (alert === 'red') return 'is-alert-red'
+  if (alert === 'yellow') return 'is-alert-yellow'
+  return ''
+}
+
 export function HomeOverview() {
   const auth = useAuth()
+  const { byId, stations: alertStations } = useStationAlerts()
   const [stations] = useState<Station[]>(loadStations)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [latest, setLatest] = useState<RealtimeSensorReading | null>(null)
+  const alertCount = alertStations.filter((item) => item.alertLevel === 'red' || item.alertLevel === 'yellow').length
 
   const selected = useMemo(
     () => stations.find((station) => station.id === selectedId) ?? null,
     [selectedId, stations],
   )
+  const selectedAlert = selected ? byId[selected.id] : undefined
+  const selectedAlertLevel = selectedAlert?.alertLevel
   const metrics = useMemo(() => FIELD_METRICS.map((metric) => {
     const value = latest?.[metric.field]
     return {
@@ -125,8 +137,12 @@ export function HomeOverview() {
               <small>当前站点</small>
               <strong>{selected?.name ?? '请选择监测站点'}</strong>
             </div>
-            <span className={selected?.online ? 'is-online' : 'is-offline'}>
-              {selected ? (selected.online ? '设备在线' : '设备离线') : '等待选择'}
+            <span className={selectedAlertLevel === 'red' || selectedAlertLevel === 'yellow' ? alertClass(selectedAlertLevel) : selected?.online ? 'is-online' : 'is-offline'}>
+              {selected
+                ? (selectedAlertLevel === 'red' || selectedAlertLevel === 'yellow'
+                  ? stationLevelLabel(selected.online, selectedAlertLevel)
+                  : selected.online ? '设备在线' : '设备离线')
+                : '等待选择'}
             </span>
             <dl>
               <div>
@@ -151,6 +167,7 @@ export function HomeOverview() {
           <div className="station-map__summary">
             <span><i className="status-dot status-dot--online" />在线 <b>1</b></span>
             <span><i className="status-dot status-dot--offline" />离线 <b>9</b></span>
+            <span><i className="status-dot status-dot--alert" />告警 <b>{alertCount}</b></span>
             <strong>站点总数 <b>10</b></strong>
           </div>
         </header>
@@ -159,23 +176,28 @@ export function HomeOverview() {
           <img src={riceArea} alt="农田航拍监控底图" />
           <div className="station-map__overlay" aria-hidden="true" />
 
-          {stations.map((station) => (
-            <button
-              key={station.id}
-              type="button"
-              className={`station-point${station.online ? ' is-online' : ' is-offline'}${selectedId === station.id ? ' is-selected' : ''}`}
-              style={{ left: `${station.left}%`, top: `${station.top}%` }}
-              title={`${station.name} · ${station.online ? '在线' : '离线'}`}
-              aria-label={`${station.name}，${station.online ? '在线' : '离线'}`}
-              onClick={() => selectStation(station)}
-            >
-              <i aria-hidden="true" />
-              <span>{station.id}</span>
-            </button>
-          ))}
+          {stations.map((station) => {
+            const alert = byId[station.id]?.alertLevel
+            return (
+              <button
+                key={station.id}
+                type="button"
+                className={stationPointClass(station.online, alert, selectedId === station.id)}
+                style={{ left: `${station.left}%`, top: `${station.top}%` }}
+                title={`${station.name} · ${stationLevelLabel(station.online, alert)}`}
+                aria-label={`${station.name}，${stationLevelLabel(station.online, alert)}`}
+                onClick={() => selectStation(station)}
+              >
+                <i aria-hidden="true" />
+                <span>{station.id}</span>
+              </button>
+            )
+          })}
 
           <div className="station-map__legend">
-            <span><i className="status-dot status-dot--online" />在线站点</span>
+            <span><i className="status-dot status-dot--online" />在线正常</span>
+            <span><i className="status-dot status-dot--yellow" />黄色预警</span>
+            <span><i className="status-dot status-dot--alert" />红色告警</span>
             <span><i className="status-dot status-dot--offline" />离线站点</span>
             <em>点击站点查看监控详情</em>
           </div>

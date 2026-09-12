@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,8 +53,7 @@ public final class CreateUserTool {
 		}
 		request.validate();
 
-		DbConfig db = DbConfig.load(RiceConfiguration.loadEnvironment(request.configurationArgs.toArray(String[]::new)),
-			System.getenv());
+		DbConfig db = DbConfig.load(request.configurationArgs.toArray(String[]::new));
 		try (Connection conn = db.open()) {
 			conn.setAutoCommit(false);
 			Long existingId = findUserId(conn, request.username);
@@ -163,15 +163,6 @@ public final class CreateUserTool {
 					i++;
 					continue;
 				}
-				if (arg.startsWith("--spring.") || arg.equals("--rice.config.path") || arg.startsWith("--rice.config.path=")) {
-					if (arg.contains("=")) {
-						req.configurationArgs.add(arg);
-					} else {
-						req.configurationArgs.add(arg + "=" + requireValue(args, ++i, arg));
-					}
-					i++;
-					continue;
-				}
 				switch (arg) {
 					case "--help", "-h" -> req.help = true;
 					case "--update" -> req.update = true;
@@ -181,18 +172,30 @@ public final class CreateUserTool {
 					case "--display-name", "-n" -> req.displayName = requireValue(args, ++i, arg);
 					case "--role", "-r" -> req.role = requireValue(args, ++i, arg);
 					default -> {
-						if (arg.startsWith("-")) {
+						if (isRuntimeConfiguration(arg)) {
+							if (arg.contains("=")) {
+								req.configurationArgs.add(arg);
+							}
+							else {
+								req.configurationArgs.add(arg + "=" + requireValue(args, ++i, arg));
+							}
+						}
+						else if (arg.startsWith("-")) {
 							throw new IllegalArgumentException("未知参数：" + arg + "。使用 --help 查看用法");
 						}
-						if (req.username == null) {
+						else if (req.username == null) {
 							req.username = arg;
-						} else if (req.password == null) {
+						}
+						else if (req.password == null) {
 							req.password = arg;
-						} else if (req.displayName == null) {
+						}
+						else if (req.displayName == null) {
 							req.displayName = arg;
-						} else if ("ADMIN".equals(req.role)) {
+						}
+						else if ("ADMIN".equals(req.role)) {
 							req.role = arg;
-						} else {
+						}
+						else {
 							throw new IllegalArgumentException("多余参数：" + arg);
 						}
 					}
@@ -260,6 +263,10 @@ public final class CreateUserTool {
 			}
 		}
 
+		private static boolean isRuntimeConfiguration(String arg) {
+			return arg.startsWith("--spring.") || arg.startsWith("--rice.config.");
+		}
+
 		private static String requireValue(String[] args, int index, String flag) {
 			if (index >= args.length) {
 				throw new IllegalArgumentException(flag + " 需要一个值");
@@ -304,10 +311,16 @@ public final class CreateUserTool {
 			}
 		}
 
+		static DbConfig load(String... args) {
+			return load(RiceConfiguration.loadEnvironment(args), environmentOverrides());
+		}
+
 		static DbConfig load(Environment environment, Map<String, String> overrides) {
-			String url = trimToNull(overrides.get("CREATE_USER_DB_URL"));
-			String username = trimToNull(overrides.get("CREATE_USER_DB_USERNAME"));
-			String password = overrides.get("CREATE_USER_DB_PASSWORD");
+			Map<String, String> values = overrides == null ? Map.of() : overrides;
+			String url = trimToNull(values.get("CREATE_USER_DB_URL"));
+			String username = trimToNull(values.get("CREATE_USER_DB_USERNAME"));
+			String password = values.containsKey("CREATE_USER_DB_PASSWORD")
+				? values.get("CREATE_USER_DB_PASSWORD") : null;
 			try {
 				if (url == null) {
 					url = trimToNull(environment.getProperty("spring.datasource.url"));
@@ -315,7 +328,7 @@ public final class CreateUserTool {
 				if (username == null) {
 					username = trimToNull(environment.getProperty("spring.datasource.username"));
 				}
-				if (password == null) {
+				if (!values.containsKey("CREATE_USER_DB_PASSWORD")) {
 					password = environment.getProperty("spring.datasource.password");
 				}
 			}
@@ -328,6 +341,23 @@ public final class CreateUserTool {
 					"统一配置缺少数据库连接信息，请检查当前 profile 或 CREATE_USER_DB_URL / CREATE_USER_DB_USERNAME。");
 			}
 			return new DbConfig(url, username, password == null ? "" : password);
+		}
+
+		private static Map<String, String> environmentOverrides() {
+			Map<String, String> overrides = new LinkedHashMap<>();
+			putEnv(overrides, "CREATE_USER_DB_URL");
+			putEnv(overrides, "CREATE_USER_DB_USERNAME");
+			if (System.getenv("CREATE_USER_DB_PASSWORD") != null) {
+				overrides.put("CREATE_USER_DB_PASSWORD", System.getenv("CREATE_USER_DB_PASSWORD"));
+			}
+			return overrides;
+		}
+
+		private static void putEnv(Map<String, String> overrides, String name) {
+			String value = trimToNull(System.getenv(name));
+			if (value != null) {
+				overrides.put(name, value);
+			}
 		}
 
 		private static String trimToNull(String value) {

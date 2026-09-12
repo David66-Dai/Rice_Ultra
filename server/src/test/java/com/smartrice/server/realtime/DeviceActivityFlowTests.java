@@ -66,6 +66,7 @@ class DeviceActivityFlowTests {
 	void setUp() {
 		reset(serial);
 		when(serial.isConnected()).thenReturn(true);
+		when(serial.isAvailable()).thenReturn(true);
 		reads.deleteAll();
 		events.deleteAll();
 		users.deleteAll();
@@ -204,6 +205,7 @@ class DeviceActivityFlowTests {
 	@Test
 	void disconnectedSerialStillHasAuthorizedEndpointAndViewerPermissions() throws Exception {
 		when(serial.isConnected()).thenReturn(false);
+		when(serial.isAvailable()).thenReturn(false);
 		JsonNode before = snapshot(operatorToken);
 		assertThat(before.path("available").asBoolean()).isFalse();
 		mvc.perform(controlRequest(operatorToken, command(before))).andExpect(status().isServiceUnavailable());
@@ -243,10 +245,9 @@ class DeviceActivityFlowTests {
 		verify(serial, never()).sendCommand(anyInt());
 	}
 
+	/** expectedRevision may be omitted (compatibility mode defaults it to the current revision); enabled may not. */
 	@Test
-	void missingRevisionOrEnabledIsRejectedBeforeAnyDeviceWrite() throws Exception {
-		mvc.perform(controlRequest(operatorToken, Map.of("stationId", "S01", "device", "pump", "enabled", true)))
-			.andExpect(status().isBadRequest());
+	void missingEnabledIsRejectedBeforeAnyDeviceWrite() throws Exception {
 		mvc.perform(controlRequest(operatorToken, Map.of("stationId", "S01", "device", "pump", "expectedRevision", 0)))
 			.andExpect(status().isBadRequest());
 		verify(serial, never()).sendCommand(anyInt());

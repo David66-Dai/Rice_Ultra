@@ -1,34 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import type { DiagnosisRecord, DiagnosisTask, StationAlertStatus } from '@smart-rice-security/shared'
 import { createCameraSession } from '../lib/inspection-camera'
 import type { CameraStatus } from '../lib/inspection-camera'
+import { useAuth } from '../auth/useAuth.ts'
+import { describeError } from '../lib/api.ts'
+import {
+  canCaptureMonitor,
+  captureFileName,
+  captureVideoFrame,
+} from '../lib/camera-capture.ts'
+import { emitDeviceStateChanged, linkageHint } from '../lib/devices.ts'
+import {
+  canDiagnoseStation,
+  confidencePercent,
+  emitStationAlertsChanged,
+  formatConfidence,
+  recognitionCardLevel,
+  stationLevelLabel,
+  stationVisualLevel,
+} from '../lib/station-alerts.ts'
+import { useStationAlerts } from './useStationAlerts.ts'
 import './FieldInspection.css'
-
-type StationLevel = 'normal' | 'offline'
 
 type InspectionStation = {
   id: string
   name: string
-  level: StationLevel
-  levelLabel: string
   cameraCount: number
   temperature: number | null
   humidity: number | null
 }
 
 const INSPECTION_STATIONS: InspectionStation[] = [
-  { id: 'S01', name: '1号监测站', level: 'normal', levelLabel: '在线', cameraCount: 3, temperature: 26.8, humidity: 78 },
-  { id: 'S02', name: '2号监测站', level: 'offline', levelLabel: '离线', cameraCount: 2, temperature: null, humidity: null },
-  { id: 'S03', name: '3号监测站', level: 'offline', levelLabel: '离线', cameraCount: 3, temperature: null, humidity: null },
-  { id: 'S04', name: '4号监测站', level: 'offline', levelLabel: '离线', cameraCount: 2, temperature: null, humidity: null },
-  { id: 'S05', name: '5号监测站', level: 'offline', levelLabel: '离线', cameraCount: 4, temperature: null, humidity: null },
-  { id: 'S06', name: '6号监测站', level: 'offline', levelLabel: '离线', cameraCount: 2, temperature: null, humidity: null },
-  { id: 'S07', name: '7号监测站', level: 'offline', levelLabel: '离线', cameraCount: 3, temperature: null, humidity: null },
-  { id: 'S08', name: '8号监测站', level: 'offline', levelLabel: '离线', cameraCount: 2, temperature: null, humidity: null },
-  { id: 'S09', name: '9号监测站', level: 'offline', levelLabel: '离线', cameraCount: 3, temperature: null, humidity: null },
-  { id: 'S10', name: '10号监测站', level: 'offline', levelLabel: '离线', cameraCount: 2, temperature: null, humidity: null },
+  { id: 'S01', name: '1号监测站', cameraCount: 3, temperature: 26.8, humidity: 78 },
+  { id: 'S02', name: '2号监测站', cameraCount: 2, temperature: null, humidity: null },
+  { id: 'S03', name: '3号监测站', cameraCount: 3, temperature: null, humidity: null },
+  { id: 'S04', name: '4号监测站', cameraCount: 2, temperature: null, humidity: null },
+  { id: 'S05', name: '5号监测站', cameraCount: 4, temperature: null, humidity: null },
+  { id: 'S06', name: '6号监测站', cameraCount: 2, temperature: null, humidity: null },
+  { id: 'S07', name: '7号监测站', cameraCount: 3, temperature: null, humidity: null },
+  { id: 'S08', name: '8号监测站', cameraCount: 2, temperature: null, humidity: null },
+  { id: 'S09', name: '9号监测站', cameraCount: 3, temperature: null, humidity: null },
+  { id: 'S10', name: '10号监测站', cameraCount: 2, temperature: null, humidity: null },
 ]
 
 const LIVE_STATION_ID = 'S01'
+const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp'
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -38,7 +54,98 @@ function formatClock(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}  ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+function riceLeafReflectance(wavelengthNm: number) {
+  if (wavelengthNm < 500) return 0.05 + 0.04 * ((wavelengthNm - 400) / 100)
+  if (wavelengthNm < 580) return 0.09 + 0.13 * Math.sin(((wavelengthNm - 500) / 80) * Math.PI)
+  if (wavelengthNm < 700) return 0.18 - 0.12 * ((wavelengthNm - 580) / 120)
+  if (wavelengthNm < 760) return 0.06 + 0.46 * ((wavelengthNm - 700) / 60)
+  return 0.5 + 0.05 * Math.sin(((wavelengthNm - 760) / 240) * Math.PI)
+}
+
+function buildHyperspectralReading(online: boolean) {
+  const bandCount = 36
+  const startNm = 400
+  const endNm = 1000
+  const points = Array.from({ length: bandCount }, (_, index) => {
+    const wavelengthNm = startNm + (index / (bandCount - 1)) * (endNm - startNm)
+    const reflectance = online ? riceLeafReflectance(wavelengthNm) : 0.08
+    const x = (index / (bandCount - 1)) * 240
+    const y = 36 - reflectance * 52
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return {
+    polyline: points.join(' '),
+    label: online ? '未见光谱胁迫' : '暂无高光谱立方体',
+    detail: online ? '128 波段 · 400–1000 nm · 红边正常 · 置信度 93.7%' : '等待站点重新上线',
+    confidence: online ? 93.7 : 0,
+    ariaLabel: online ? '高光谱反射率曲线，红边抬升正常' : '高光谱设备离线',
+  }
+}
+
+function leafCardCopy(
+  alert: StationAlertStatus | undefined,
+  uploading: boolean,
+  error: string | null,
+  online: boolean,
+  hint: string | null,
+) {
+  if (!online) {
+    return { badge: '离线', title: '站点离线', detail: '仅在线站点可上传识别', percent: 0 }
+  }
+  if (uploading) {
+    return { badge: '识别中', title: '正在识别叶片…', detail: '已提交到叶害模型', percent: 35 }
+  }
+  if (error) {
+    return { badge: '失败', title: '识别失败', detail: error, percent: 0 }
+  }
+  if (!alert?.leafLabel && !alert?.leafLabelZh) {
+    return { badge: '上传识别', title: '点击上传叶片图片', detail: '细菌性叶枯病 / 褐斑病 / 东格鲁病毒将触发红色告警并开启喷药', percent: 0 }
+  }
+  const label = alert.leafLabelZh ?? alert.leafLabel ?? '已识别'
+  const confidence = formatConfidence(alert.leafConfidence)
+  const detail = confidence ? `模型置信度 ${confidence} · 点击可重新上传` : '点击可重新上传'
+  return {
+    badge: alert.leafAlertLevel === 'red' ? '叶害告警' : '健康叶片',
+    title: label,
+    detail: hint ? `${detail} · ${hint}` : detail,
+    percent: confidencePercent(alert.leafConfidence),
+  }
+}
+
+function pestCardCopy(
+  alert: StationAlertStatus | undefined,
+  uploading: boolean,
+  error: string | null,
+  online: boolean,
+  hint: string | null,
+) {
+  if (!online) {
+    return { badge: '离线', title: '站点离线', detail: '仅在线站点可上传识别', percent: 0 }
+  }
+  if (uploading) {
+    return { badge: '识别中', title: '正在识别虫害…', detail: '已提交到虫害模型', percent: 35 }
+  }
+  if (error) {
+    return { badge: '失败', title: '识别失败', detail: error, percent: 0 }
+  }
+  if (alert?.pestCount == null) {
+    return { badge: '上传识别', title: '点击上传虫害图片', detail: '1 只黄色预警，2 只及以上红色告警并开启驱虫灯', percent: 0 }
+  }
+  const count = alert.pestCount
+  const label = alert.pestLabel ? ` · ${alert.pestLabel}` : ''
+  const badge = count >= 2 ? '虫害告警' : count === 1 ? '虫害预警' : '未见虫害'
+  const detail = hint ? `点击可重新上传识别 · ${hint}` : '点击可重新上传识别'
+  return {
+    badge,
+    title: count === 0 ? '未检出害虫' : `检出 ${count} 只${label}`,
+    detail,
+    percent: count === 0 ? 8 : Math.min(100, count * 40),
+  }
+}
+
 export function FieldInspection() {
+  const auth = useAuth()
+  const { byId, refresh } = useStationAlerts()
   const [stationId, setStationId] = useState('S01')
   const [offlineCameraIndex, setOfflineCameraIndex] = useState(1)
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
@@ -47,14 +154,26 @@ export function FieldInspection() {
   const [connectionMessage, setCameraMessage] = useState('正在连接摄像头…')
   const [videoSize, setVideoSize] = useState('— × —')
   const [now, setNow] = useState(() => new Date())
+  const [uploading, setUploading] = useState<DiagnosisTask | null>(null)
+  const [leafError, setLeafError] = useState<string | null>(null)
+  const [pestError, setPestError] = useState<string | null>(null)
+  const [leafHint, setLeafHint] = useState<string | null>(null)
+  const [pestHint, setPestHint] = useState<string | null>(null)
+  const [capture, setCapture] = useState<{ file: File, previewUrl: string } | null>(null)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+  const [flashing, setFlashing] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const sessionRef = useRef<ReturnType<typeof createCameraSession> | null>(null)
+  const leafInputRef = useRef<HTMLInputElement>(null)
+  const pestInputRef = useRef<HTMLInputElement>(null)
 
   const station = useMemo(
     () => INSPECTION_STATIONS.find((item) => item.id === stationId) ?? INSPECTION_STATIONS[0],
     [stationId],
   )
-
+  const stationOnline = canDiagnoseStation(station.id)
+  const alert = byId[station.id]
+  const stationLevel = stationVisualLevel(stationOnline, alert?.alertLevel)
   const liveFeed = stationId === LIVE_STATION_ID
   const cameraSupported = Boolean(navigator.mediaDevices?.getUserMedia)
   const cameraStatus = !liveFeed ? 'offline' : !cameraSupported ? 'unavailable' : connectionStatus
@@ -63,6 +182,10 @@ export function FieldInspection() {
     : !cameraSupported ? '当前页面无法访问摄像头，请使用 HTTPS 或 localhost 并检查浏览器支持' : connectionMessage
   const cameraIndex = liveFeed ? Math.max(1, devices.findIndex(device => device.deviceId === selectedDeviceId) + 1) : offlineCameraIndex
   const selectedDevice = liveFeed ? devices.find(device => device.deviceId === selectedDeviceId) : undefined
+  const leafCopy = leafCardCopy(alert, uploading === 'leaf', leafError, stationOnline, leafHint)
+  const pestCopy = pestCardCopy(alert, uploading === 'pest', pestError, stationOnline, pestHint)
+  const hyperspectral = buildHyperspectralReading(stationOnline)
+  const canCapture = canCaptureMonitor(stationOnline, cameraStatus === 'live', uploading !== null)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
@@ -97,26 +220,96 @@ export function FieldInspection() {
     }
   }, [liveFeed, cameraSupported])
 
+  useEffect(() => {
+    return () => {
+      if (capture) URL.revokeObjectURL(capture.previewUrl)
+    }
+  }, [capture])
+
   function handleVideoMeta() {
     const video = videoRef.current
     if (!video?.videoWidth) return
     setVideoSize(`${video.videoWidth} × ${video.videoHeight}`)
   }
 
+  function closeCapture() {
+    setCapture(null)
+    setCaptureError(null)
+  }
+
   function selectStation(id: string) {
     setStationId(id)
     setOfflineCameraIndex(1)
     if (id !== stationId) setVideoSize('— × —')
+    setLeafError(null)
+    setPestError(null)
+    setLeafHint(null)
+    setPestHint(null)
+    closeCapture()
   }
 
   function retryCamera() {
     void sessionRef.current?.retry()
   }
 
-  const stationOnline = station.level !== 'offline'
-  const diseaseText = stationOnline ? '未见明显虫害' : '设备离线无图像'
-  const diseaseConfidence = stationOnline ? 96.2 : 0
-  const ndvi = stationOnline ? 0.81 : 0
+  async function upload(task: DiagnosisTask, file: File) {
+    if (!stationOnline) return false
+    const form = new FormData()
+    form.append('file', file)
+    setUploading(task)
+    setCaptureError(null)
+    if (task === 'leaf') setLeafError(null)
+    else setPestError(null)
+    try {
+      const record = await auth.request<DiagnosisRecord>(`/api/diagnosis/${task}?stationId=${encodeURIComponent(stationId)}`, {
+        method: 'POST',
+        body: form,
+      })
+      const hint = linkageHint(task, record.activatedDevice, record.deviceError)
+      if (task === 'leaf') setLeafHint(hint)
+      else setPestHint(hint)
+      emitStationAlertsChanged()
+      emitDeviceStateChanged()
+      await refresh()
+      return true
+    } catch (error) {
+      const message = describeError(error)
+      if (task === 'leaf') setLeafError(message)
+      else setPestError(message)
+      setCaptureError(message)
+      return false
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  async function takePhoto(replace = false) {
+    const video = videoRef.current
+    if (!video || !stationOnline || cameraStatus !== 'live' || uploading) return
+    if (capture && !replace) return
+    setCaptureError(null)
+    setFlashing(true)
+    window.setTimeout(() => setFlashing(false), 180)
+    try {
+      const file = await captureVideoFrame(video, captureFileName(stationId, cameraIndex))
+      setCapture({ file, previewUrl: URL.createObjectURL(file) })
+    } catch (error) {
+      setCaptureError(error instanceof Error ? error.message : '截取画面失败')
+    }
+  }
+
+  async function submitCapture(task: DiagnosisTask) {
+    if (!capture || uploading) return
+    const ok = await upload(task, capture.file)
+    if (ok) closeCapture()
+  }
+
+  function onPick(task: DiagnosisTask, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !stationOnline || uploading) return
+    void upload(task, file)
+  }
 
   return (
     <div className="inspection-page">
@@ -172,6 +365,52 @@ export function FieldInspection() {
               </span>
               <time dateTime={now.toISOString()}>{formatClock(now)}</time>
             </div>
+            {flashing && <div className="camera-screen__flash" aria-hidden="true" />}
+            {canCapture && !capture && (
+              <button
+                type="button"
+                className="camera-shutter"
+                onClick={() => void takePhoto()}
+                aria-label="拍照"
+              >
+                <i />
+                <span>拍照</span>
+              </button>
+            )}
+            {capture && (
+              <div className="camera-capture" role="dialog" aria-modal="true" aria-labelledby="capture-title">
+                <img src={capture.previewUrl} alt="刚拍摄的监控画面" />
+                <div className="camera-capture__panel">
+                  <strong id="capture-title">选择识别类型</strong>
+                  <p>确认画面后提交叶害或虫害识别</p>
+                  {captureError && <em>{captureError}</em>}
+                  <div className="camera-capture__actions">
+                    <button
+                      type="button"
+                      className="is-leaf"
+                      disabled={uploading !== null}
+                      onClick={() => void submitCapture('leaf')}
+                    >
+                      {uploading === 'leaf' ? '叶害识别中…' : '叶害识别'}
+                    </button>
+                    <button
+                      type="button"
+                      className="is-pest"
+                      disabled={uploading !== null}
+                      onClick={() => void submitCapture('pest')}
+                    >
+                      {uploading === 'pest' ? '虫害识别中…' : '虫害识别'}
+                    </button>
+                    <button type="button" disabled={uploading !== null} onClick={() => void takePhoto(true)}>
+                      重拍
+                    </button>
+                    <button type="button" disabled={uploading !== null} onClick={closeCapture}>
+                      取消
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="camera-controls">
@@ -191,8 +430,12 @@ export function FieldInspection() {
                 value={liveFeed ? selectedDeviceId : offlineCameraIndex}
                 disabled={liveFeed && devices.length === 0}
                 onChange={(event) => {
-                  if (liveFeed) void sessionRef.current?.select(event.target.value)
-                  else setOfflineCameraIndex(Number(event.target.value))
+                  closeCapture()
+                  if (liveFeed) {
+                    void sessionRef.current?.select(event.target.value)
+                  } else {
+                    setOfflineCameraIndex(Number(event.target.value))
+                  }
                 }}
               >
                 {liveFeed ? <>
@@ -207,6 +450,16 @@ export function FieldInspection() {
                   ))}
               </select>
             </label>
+            <div className="camera-controls__capture">
+              <span>抓拍识别</span>
+              <button
+                type="button"
+                disabled={!canCapture || capture !== null}
+                onClick={() => void takePhoto()}
+              >
+                拍照
+              </button>
+            </div>
             <div className="camera-controls__status">
               <span>视频状态</span>
               <strong className={cameraStatus === 'live' ? 'is-ok' : 'is-off'}>
@@ -219,6 +472,9 @@ export function FieldInspection() {
             <span role="status">{cameraMessage} · 自动检测站点摄像头，插拔后更新列表</span>
             <button type="button" onClick={() => { void sessionRef.current?.refresh() }}>重新检测</button>
           </div>}
+          {captureError && !capture && (
+            <p className="camera-capture-error" role="status">{captureError}</p>
+          )}
         </section>
 
         <section className="recognition-panel tech-panel" aria-labelledby="recognition-title">
@@ -227,47 +483,77 @@ export function FieldInspection() {
               <span>AI RECOGNITION MATRIX</span>
               <h2 id="recognition-title">智能识别分析</h2>
             </div>
-            <small>{stationOnline ? '实时分析中' : '站点离线'}</small>
+            <small>{stationOnline ? '可拍照后选择叶害 / 虫害，或点击卡片上传图片' : '站点离线，识别已关闭'}</small>
           </header>
 
+          <input
+            ref={leafInputRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            hidden
+            onChange={(event) => onPick('leaf', event)}
+          />
+          <input
+            ref={pestInputRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            hidden
+            onChange={(event) => onPick('pest', event)}
+          />
+
           <div className="recognition-list">
-            <article className={`recognition-card recognition-card--${station.level}`}>
+
+            <button
+              type="button"
+              className={`recognition-card${stationOnline ? ' recognition-card--upload' : ''} recognition-card--${recognitionCardLevel(stationOnline, alert?.leafAlertLevel)}${uploading === 'leaf' ? ' is-busy' : ''}`}
+              onClick={() => stationOnline && leafInputRef.current?.click()}
+              disabled={!stationOnline || uploading !== null}
+            >
               <div className="recognition-card__title">
                 <div>
                   <small>LEAF DAMAGE</small>
                   <h3>叶害识别</h3>
                 </div>
-                <span>{stationOnline ? '长势良好' : '离线'}</span>
+                <span>{leafCopy.badge}</span>
               </div>
-              <strong>{stationOnline ? '叶片完整度 94.8%' : '暂无识别结果'}</strong>
-              <div className="recognition-progress"><i style={{ width: stationOnline ? '94.8%' : '0%' }} /></div>
-              <p>{stationOnline ? '模型置信度 95.4% · 刚刚更新' : '等待站点重新上线'}</p>
-            </article>
+              <strong>{leafCopy.title}</strong>
+              <div className="recognition-progress"><i style={{ width: `${leafCopy.percent}%` }} /></div>
+              <p>{leafCopy.detail}</p>
+            </button>
 
-            <article className={`recognition-card recognition-card--${station.level}`}>
+            <button
+              type="button"
+              className={`recognition-card${stationOnline ? ' recognition-card--upload' : ''} recognition-card--${recognitionCardLevel(stationOnline, alert?.pestAlertLevel)}${uploading === 'pest' ? ' is-busy' : ''}`}
+              onClick={() => stationOnline && pestInputRef.current?.click()}
+              disabled={!stationOnline || uploading !== null}
+            >
               <div className="recognition-card__title">
                 <div>
-                  <small>DISEASE DETECTION</small>
+                  <small>PEST DETECTION</small>
                   <h3>虫害识别</h3>
                 </div>
-                <span>{station.levelLabel}</span>
+                <span>{pestCopy.badge}</span>
               </div>
-              <strong>{diseaseText}</strong>
-              <div className="recognition-progress"><i style={{ width: `${diseaseConfidence}%` }} /></div>
-              <p>{stationOnline ? `模型置信度 ${diseaseConfidence}% · 图像识别` : '等待站点重新上线'}</p>
-            </article>
+              <strong>{pestCopy.title}</strong>
+              <div className="recognition-progress"><i style={{ width: `${pestCopy.percent}%` }} /></div>
+              <p>{pestCopy.detail}</p>
+            </button>
 
-            <article className={`recognition-card recognition-card--${station.level}`}>
+            <article className={`recognition-card recognition-card--${stationLevel}`}>
               <div className="recognition-card__title">
                 <div>
-                  <small>MULTISPECTRAL</small>
-                  <h3>多光谱识别</h3>
+                  <small>HYPERSPECTRAL</small>
+                  <h3>高光谱识别</h3>
                 </div>
-                <span>NDVI</span>
+                <span>SVM</span>
               </div>
-              <strong>{stationOnline ? `植被指数 ${ndvi.toFixed(2)}` : '暂无光谱数据'}</strong>
-              <div className="recognition-progress"><i style={{ width: `${ndvi * 100}%` }} /></div>
-              <p>{stationOnline ? '叶绿素 42.6 SPAD · 光谱分析' : '等待站点重新上线'}</p>
+              <strong>{hyperspectral.label}</strong>
+              <svg className="hyperspectral-curve" viewBox="0 0 240 40" role="img" aria-label={hyperspectral.ariaLabel}>
+                <line x1="0" y1="20" x2="240" y2="20" />
+                <polyline points={hyperspectral.polyline} />
+              </svg>
+              <div className="recognition-progress"><i style={{ width: `${hyperspectral.confidence}%` }} /></div>
+              <p>{hyperspectral.detail}</p>
             </article>
           </div>
         </section>
@@ -280,31 +566,38 @@ export function FieldInspection() {
             <h2 id="station-status-title">当前站点状态</h2>
           </div>
           <div className="station-status__legend">
-            <span><i className="is-normal" />在线</span>
+            <span><i className="is-normal" />正常</span>
+            <span><i className="is-attention" />黄色预警</span>
+            <span><i className="is-danger" />红色告警</span>
             <span><i className="is-offline" />离线</span>
           </div>
         </header>
 
         <div className="station-status__grid">
-          {INSPECTION_STATIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`station-status-card station-status-card--${item.level}${stationId === item.id ? ' is-selected' : ''}`}
-              onClick={() => selectStation(item.id)}
-            >
-              <span className="station-status-card__light" aria-hidden="true"><i /></span>
-              <div>
-                <small>{item.id}</small>
-                <strong>{item.name}</strong>
-              </div>
-              <dl>
-                <div><dt>温度</dt><dd>{item.temperature == null ? '--' : `${item.temperature}℃`}</dd></div>
-                <div><dt>湿度</dt><dd>{item.humidity == null ? '--' : `${item.humidity}%`}</dd></div>
-              </dl>
-              <em>{item.levelLabel}</em>
-            </button>
-          ))}
+          {INSPECTION_STATIONS.map((item) => {
+            const itemOnline = item.id === LIVE_STATION_ID
+            const itemAlert = byId[item.id]
+            const level = stationVisualLevel(itemOnline, itemAlert?.alertLevel)
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`station-status-card station-status-card--${level}${stationId === item.id ? ' is-selected' : ''}`}
+                onClick={() => selectStation(item.id)}
+              >
+                <span className="station-status-card__light" aria-hidden="true"><i /></span>
+                <div>
+                  <small>{item.id}</small>
+                  <strong>{item.name}</strong>
+                </div>
+                <dl>
+                  <div><dt>温度</dt><dd>{item.temperature == null ? '--' : `${item.temperature}℃`}</dd></div>
+                  <div><dt>湿度</dt><dd>{item.humidity == null ? '--' : `${item.humidity}%`}</dd></div>
+                </dl>
+                <em>{stationLevelLabel(itemOnline, itemAlert?.alertLevel)}</em>
+              </button>
+            )
+          })}
         </div>
       </section>
     </div>

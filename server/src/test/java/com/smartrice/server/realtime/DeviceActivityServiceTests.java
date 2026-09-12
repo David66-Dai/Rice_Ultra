@@ -17,6 +17,7 @@ import com.smartrice.server.auth.UserAccountRepository;
 import com.smartrice.server.notifications.NotificationEventRepository;
 import com.smartrice.server.notifications.NotificationReadStateRepository;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,9 +41,12 @@ class DeviceActivityServiceTests {
 	private final NotificationEventRepository events = mock(NotificationEventRepository.class);
 	private final NotificationReadStateRepository reads = mock(NotificationReadStateRepository.class);
 	private final PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
+	private final Map<String, StationDevice> rows = new HashMap<>();
+	private final StationDeviceRepository deviceRepository = mock(StationDeviceRepository.class);
 	@SuppressWarnings("unchecked")
-	private final ObjectProvider<SerialSensorCollector> provider = mock(ObjectProvider.class);
-	private final SerialSensorCollector serial = mock(SerialSensorCollector.class);
+	private final ObjectProvider<DeviceActuator> provider = mock(ObjectProvider.class);
+	private final DeviceActuator serial = mock(DeviceActuator.class);
+	private final DeviceCommandService commands = new DeviceCommandService(deviceRepository, provider);
 	private final DevicesProperties permissions = new DevicesProperties();
 	private final Jwt jwt = Jwt.withTokenValue("test").header("alg", "HS256").subject("stale-name")
 		.claim("uid", 1L).expiresAt(Instant.now().plusSeconds(60)).build();
@@ -58,11 +62,19 @@ class DeviceActivityServiceTests {
 		when(users.findById(1L)).thenReturn(Optional.of(user));
 		when(reads.findById(1L)).thenReturn(Optional.empty());
 		when(events.findTop100ByOrderByIdDesc()).thenReturn(List.of());
+		rows.clear();
+		when(deviceRepository.findByStationIdAndDevice(any(), any())).thenAnswer(
+			invocation -> Optional.ofNullable(rows.get(invocation.getArgument(0) + ":" + invocation.getArgument(1))));
+		when(deviceRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+			StationDevice row = invocation.getArgument(0);
+			rows.put(row.getStationId() + ":" + row.getDevice(), row);
+			return row;
+		});
 		when(provider.getIfAvailable()).thenReturn(serial);
-		when(serial.isConnected()).thenReturn(true);
+		when(serial.isAvailable()).thenReturn(true);
 		when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
 		permissions.setControlUsers(List.of("operator"));
-		activity = new DeviceActivityService(users, permissions, provider, events, reads, transactions);
+		activity = new DeviceActivityService(users, permissions, commands, events, reads, transactions);
 	}
 
 	@Test

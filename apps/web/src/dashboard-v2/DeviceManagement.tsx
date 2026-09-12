@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useDeviceSync } from '../devices/useDeviceSync.ts'
 import { describeError } from '../lib/api.ts'
+import { DEVICE_LABELS, emitDeviceStateChanged } from '../lib/devices.ts'
 import './DeviceManagement.css'
 
 const STATIONS = Array.from({ length: 10 }, (_, index) => ({
@@ -10,8 +11,8 @@ const STATIONS = Array.from({ length: 10 }, (_, index) => ({
 }))
 
 const DEVICES = [
-  { key: 'pump', name: '水泵', title: '智能灌溉水泵', code: 'IRRIGATION PUMP · P-01' },
-  { key: 'lamp', name: '驱虫灯', title: '智能驱虫灯', code: 'PEST CONTROL LAMP · L-01' },
+  { key: 'pump', name: DEVICE_LABELS.pump, title: '智能喷药', code: 'CHEMICAL SPRAY · P-01' },
+  { key: 'lamp', name: DEVICE_LABELS.lamp, title: '智能驱虫灯', code: 'PEST CONTROL LAMP · L-01' },
 ] as const
 
 function formatTime(value: string | null | undefined) {
@@ -47,6 +48,7 @@ export function DeviceManagement() {
     setControlError(null)
     try {
       await controlDevice(selectedStation.id, device, enabled)
+      emitDeviceStateChanged()
     } catch (cause) {
       setControlError(describeError(cause))
     } finally {
@@ -138,14 +140,14 @@ export function DeviceManagement() {
             <footer className="device-console__footer">
               <span className={controlError || error || connection !== 'connected' ? 'is-error' : ''}><i />{controlError ? '控制指令失败' : syncText}</span>
               <p role={controlError || error ? 'alert' : undefined}>{controlError || error || '显示最近成功发送的指令，不代表设备已确认执行。'}</p>
-              <small>所有用户共享指令记录</small>
+              <small>所有用户共享指令记录，并与识别告警联动</small>
             </footer>
           </>
         ) : (
           <div className="device-empty" role="status">
             <i aria-hidden="true" />
             <strong>{selectedStation.name}当前离线</strong>
-            <p>无法获取设备状态，水泵与驱虫灯控制均不可用</p>
+            <p>无法获取设备状态，喷药与驱虫灯控制均不可用</p>
           </div>
         )}
       </section>

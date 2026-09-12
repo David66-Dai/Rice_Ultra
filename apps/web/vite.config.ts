@@ -36,6 +36,8 @@ export default defineConfig(({ command, isPreview }) => {
         '/api': {
           target: config.apiTarget,
           changeOrigin: true,
+          timeout: 180_000,
+          proxyTimeout: 180_000,
           // 局域网用 IP 打开页面时，浏览器会带 Origin: http://192.168.x.x:5173；
           // 不改写的话 Spring CORS 会当成跨域并返回 403。
           configure(proxy) {

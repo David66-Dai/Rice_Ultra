@@ -35,13 +35,13 @@ class AstrBotIntegrationServiceTests {
 	void startupImmediatelyCompensatesOutstandingStopAndMarksItComplete() {
 		AstrBotScheduledStop stop = scheduled();
 		when(stops.findByStatusIn(any())).thenReturn(List.of(stop));
-		when(devices.automaticStopAfterRestart("operator", "操作员", "S01", "pump"))
+		when(devices.automaticStopAfterRestart("operator", "操作员", "S01", "pump", 1L))
 			.thenReturn(new DeviceControlResponse("S01", "pump", false, "FA03", Instant.now(),
 				new DeviceState("S01", "pump", false, 1, Instant.now(), "operator")));
 
 		service.recoverScheduledStops();
 
-		verify(devices, timeout(3000)).automaticStopAfterRestart("operator", "操作员", "S01", "pump");
+		verify(devices, timeout(3000)).automaticStopAfterRestart("operator", "操作员", "S01", "pump", 1L);
 		verify(stops, timeout(3000)).saveAndFlush(stop);
 		assertThat(stop.getStatus()).isEqualTo("COMPLETED");
 	}
@@ -50,7 +50,7 @@ class AstrBotIntegrationServiceTests {
 	void newerCommandSupersedesRecoveredTimerWithoutSendingAnotherStop() {
 		AstrBotScheduledStop stop = scheduled();
 		when(stops.findByStatusIn(any())).thenReturn(List.of(stop));
-		when(devices.automaticStopAfterRestart("operator", "操作员", "S01", "pump"))
+		when(devices.automaticStopAfterRestart("operator", "操作员", "S01", "pump", 1L))
 			.thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "newer command"));
 
 		service.recoverScheduledStops();

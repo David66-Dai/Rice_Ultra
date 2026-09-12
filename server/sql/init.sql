@@ -111,6 +111,41 @@ CREATE TABLE IF NOT EXISTS notification_read_state (
   CONSTRAINT fk_notification_read_user FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------------------
+-- 田间巡检叶害 / 虫害每次识别结果；站点当前颜色由各站最新 leaf + 最新 pest 推导
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS inspection_diagnosis (
+  id               BIGINT        NOT NULL AUTO_INCREMENT,
+  station_id       VARCHAR(8)    NOT NULL,
+  task             VARCHAR(16)   NOT NULL,
+  filename         VARCHAR(255)  NULL,
+  label            VARCHAR(128)  NULL,
+  label_zh         VARCHAR(128)  NULL,
+  confidence       DOUBLE        NULL,
+  detection_count  INT           NOT NULL DEFAULT 0,
+  alert_level      VARCHAR(16)   NOT NULL,
+  result_json      TEXT          NOT NULL,
+  created_at       DATETIME(6)   NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_diagnosis_station_task_time (station_id, task, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 站点喷药(pump) / 驱虫灯(lamp) 开关；田间巡检联动与设备管理共用
+-- 串口指令码仍为 FA01-FA04，不随界面文案变更
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS station_device (
+  id          BIGINT       NOT NULL AUTO_INCREMENT,
+  station_id  VARCHAR(8)   NOT NULL,
+  device      VARCHAR(16)  NOT NULL,
+  enabled     BIT(1)       NULL,
+  revision    BIGINT       NOT NULL DEFAULT 0,
+  updated_at  DATETIME(6)  NOT NULL,
+  updated_by  VARCHAR(64)  NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_station_device (station_id, device)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Persisted safety timers for AstrBot ON commands. Outstanding rows are stopped on restart.
 CREATE TABLE IF NOT EXISTS astrbot_scheduled_stop (
   request_id VARCHAR(36) NOT NULL,

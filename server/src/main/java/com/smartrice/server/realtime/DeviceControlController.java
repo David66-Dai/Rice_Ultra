@@ -21,12 +21,19 @@ public class DeviceControlController {
 		this.activity = activity;
 	}
 
+	/** Compatibility state endpoint used by the diagnosis-aware mainline UI. */
+	@GetMapping("/state")
+	public DeviceStatusResponse state(@RequestParam String stationId) {
+		return activity.status(stationId);
+	}
+
 	@PostMapping("/control")
 	public DeviceControlResponse control(@AuthenticationPrincipal Jwt jwt,
 			@Valid @RequestBody DeviceControlRequest request) {
 		return activity.control(jwt, request);
 	}
 
+	/** Shared authenticated snapshot used by the permission-aware UI and AstrBot adapter. */
 	@GetMapping("/sync")
 	public DeferredResult<DeviceSyncResponse> sync(@AuthenticationPrincipal Jwt jwt,
 			@RequestParam(required = false) String after,

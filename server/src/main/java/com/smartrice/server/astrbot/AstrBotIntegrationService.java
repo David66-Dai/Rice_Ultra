@@ -193,7 +193,7 @@ public class AstrBotIntegrationService {
 		try {
 			if (recovered) {
 				devices.automaticStopAfterRestart(stop.getUsername(), stop.getDisplayName(),
-					stop.getStationId(), stop.getDevice());
+					stop.getStationId(), stop.getDevice(), stop.getExpectedRevision());
 			}
 			else {
 				devices.automaticStop(stop.getUsername(), stop.getDisplayName(), new DeviceControlRequest(

@@ -14,6 +14,7 @@ import com.smartrice.server.history.HistoryDailyResponse.EnvironmentAverages;
 import com.smartrice.server.history.HistoryDailyResponse.HistoryDayData;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -29,9 +30,11 @@ import org.springframework.test.web.servlet.MockMvc;
 @ActiveProfiles("dev")
 class HistoryDataFlowTests {
 
+	private static final ZoneId FIELD_ZONE = ZoneId.of("Asia/Shanghai");
+	private static final LocalDate DATE = LocalDate.of(2020, 1, 1);
+
 	@Autowired MockMvc mvc;
 	@MockitoBean HiveHistoryRepository repository;
-	private static final LocalDate DATE = LocalDate.of(2020, 1, 1);
 
 	static HistoryDayData sample(LocalDate date) {
 		return new HistoryDayData(date, "S01",
@@ -93,7 +96,8 @@ class HistoryDataFlowTests {
 		mvc.perform(get("/api/history/range").param("stationId", "S11").with(jwt())).andExpect(status().isBadRequest());
 		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", "bad-date").with(jwt()))
 			.andExpect(status().isBadRequest());
-		mvc.perform(get("/api/history/daily").param("stationId", "S01").param("date", LocalDate.now().plusDays(2).toString()).with(jwt()))
+		mvc.perform(get("/api/history/daily").param("stationId", "S01")
+				.param("date", LocalDate.now(FIELD_ZONE).plusDays(1).toString()).with(jwt()))
 			.andExpect(status().isBadRequest());
 		mvc.perform(get("/api/history/range").param("stationId", "S01")).andExpect(status().isUnauthorized());
 		verifyNoInteractions(repository);

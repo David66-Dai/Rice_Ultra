@@ -82,14 +82,23 @@ export type DeviceControlRequest = {
   stationId: string;
   device: "pump" | "lamp";
   enabled: boolean;
-  /** Revision last observed from the server; stale commands are rejected. */
-  expectedRevision: number;
+  expectedRevision?: number;
 };
 
-export type DeviceControlResponse = Omit<DeviceControlRequest, "expectedRevision"> & {
+export type DeviceControlResponse = {
+  stationId: string;
+  device: "pump" | "lamp";
+  enabled: boolean;
   command: string;
   sentAt: string;
-  state: DeviceState;
+  state?: DeviceState;
+};
+
+export type DeviceStatusResponse = {
+  stationId: string;
+  pump: boolean;
+  lamp: boolean;
+  updatedAt: string | null;
 };
 
 /** Last successfully sent command, not physical actuator feedback. */
@@ -129,6 +138,7 @@ export type LeafDiagnosisResult = {
   label: string;
   label_zh?: string;
   confidence: number;
+  has_leaf_damage?: boolean;
   note?: string;
 };
 
@@ -142,7 +152,45 @@ export type PestDiagnosisResult = {
   task: "pest";
   filename?: string;
   detections: PestDetection[];
+  count?: number;
   note?: string;
+};
+
+export type StationAlertLevel = "green" | "yellow" | "red";
+export type DiagnosisTask = "leaf" | "pest";
+
+export type DiagnosisRecord = {
+  id: number;
+  stationId: string;
+  task: DiagnosisTask;
+  filename?: string | null;
+  label: string | null;
+  labelZh: string | null;
+  confidence: number | null;
+  detectionCount: number;
+  alertLevel: StationAlertLevel;
+  stationAlertLevel: StationAlertLevel;
+  createdAt: string;
+  result: LeafDiagnosisResult | PestDiagnosisResult;
+  activatedDevice?: "pump" | "lamp" | null;
+  deviceError?: string | null;
+};
+
+export type StationAlertStatus = {
+  stationId: string;
+  alertLevel: StationAlertLevel;
+  leafAlertLevel: StationAlertLevel;
+  leafLabel: string | null;
+  leafLabelZh: string | null;
+  leafConfidence: number | null;
+  pestAlertLevel: StationAlertLevel;
+  pestCount: number | null;
+  pestLabel: string | null;
+  updatedAt: string | null;
+};
+
+export type StationAlertListResponse = {
+  stations: StationAlertStatus[];
 };
 
 /* ---------- 登录 / 鉴权 ---------- */

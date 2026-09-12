@@ -22,6 +22,7 @@ import com.smartrice.server.auth.UserAccountRepository;
 import com.smartrice.server.notifications.NotificationEventRepository;
 import com.smartrice.server.realtime.DevicesProperties;
 import com.smartrice.server.realtime.SerialSensorCollector;
+import com.smartrice.server.realtime.StationDeviceRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,6 +50,7 @@ class AstrBotControlFlowTests {
 	@Autowired UserAccountRepository users;
 	@Autowired NotificationEventRepository events;
 	@Autowired AstrBotScheduledStopRepository stops;
+	@Autowired StationDeviceRepository stationDevices;
 	@Autowired AstrBotControlProperties astrBot;
 	@Autowired DevicesProperties permissions;
 	@Autowired JwtService jwtService;
@@ -60,8 +62,10 @@ class AstrBotControlFlowTests {
 	void setUp() {
 		reset(serial);
 		when(serial.isConnected()).thenReturn(true);
+		when(serial.isAvailable()).thenReturn(true);
 		events.deleteAll();
 		stops.deleteAll();
+		stationDevices.deleteAll();
 		users.deleteAll();
 		operator = account("operator", "机器人操作员");
 		UserAccount viewer = account("viewer", "观察员");
