@@ -27,9 +27,18 @@ test('serial failure keeps diagnosis copy but reports the command error', () => 
   assert.equal(linkageHint('pest', null, '串口 COM4 当前未连接'), '驱虫灯指令未发出：串口 COM4 当前未连接')
 })
 
-test('pending diagnosis linkage explains WeChat confirmation without claiming the device opened', () => {
+test('pending diagnosis linkage explains AstrBot message confirmation without claiming the device opened', () => {
   const id = '00000000-0000-4000-8000-000000000099'
-  assert.equal(linkageHint('leaf', null, null, true, id, 'PENDING'), `微信告警发送中 · 确认编号 ${id}`)
-  assert.equal(linkageHint('pest', null, null, true, id, 'SENT'), `等待微信确认 · 确认编号 ${id}`)
-  assert.equal(linkageHint('leaf', null, null, true, id, 'FAILED'), `微信告警发送失败，设备不会开启 · 确认编号 ${id}`)
+  assert.equal(linkageHint('leaf', null, null, true, id, 'PENDING'), `AstrBot 消息告警发送中 · 确认编号 ${id}`)
+  assert.equal(linkageHint('pest', null, null, true, id, 'SENT'), `等待 AstrBot 消息确认 · 确认编号 ${id}`)
+  assert.equal(linkageHint('leaf', null, null, true, id, 'FAILED'), `AstrBot 消息告警发送失败，设备不会开启 · 确认编号 ${id}`)
+})
+
+test('a partially delivered alert still waits for a session that actually received it', () => {
+  const id = '00000000-0000-4000-8000-000000000100'
+  assert.equal(
+    linkageHint('leaf', null, null, true, id, 'PARTIAL'),
+    `等待 AstrBot 消息确认（部分会话未送达） · 确认编号 ${id}`,
+  )
+  assert.equal(linkageHint('leaf', 'pump', null, true, id, 'PARTIAL'), `等待 AstrBot 消息确认（部分会话未送达） · 确认编号 ${id}`)
 })

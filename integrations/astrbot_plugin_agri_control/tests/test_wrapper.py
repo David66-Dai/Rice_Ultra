@@ -44,7 +44,15 @@ class FakeClient:
 
     async def describe(self, *args, **kwargs):
         self.calls.append(("describe", args, kwargs))
-        return {"ok": True, "mapped_username": "operator"}
+        identity = args[0]
+        return {
+            "ok": True,
+            "umo": identity.umo,
+            "sender_id": identity.sender_id,
+            "mapped_username": "operator",
+            "can_control": True,
+            "device_available": True,
+        }
 
     async def confirm_diagnosis(self, *args, **kwargs):
         self.calls.append(("confirm_diagnosis", args, kwargs))
@@ -185,6 +193,46 @@ def test_missing_or_numeric_platform_ids_are_preserved(wrapper):
     assert result.sender_id == "12345"
 
 
+@pytest.mark.parametrize(("umo", "sender"), [
+    ("qq-main:GroupMessage:987654321", "123456789"),
+    ("qq-main:FriendMessage:123456789", 123456789),
+])
+def test_qq_group_and_private_identity_are_preserved(wrapper, umo, sender):
+    event = FakeEvent()
+    event.unified_msg_origin = umo
+    event.get_sender_id = lambda: sender
+    result = wrapper._identity(event)
+    assert result.umo == umo
+    assert result.sender_id == str(sender)
+
+
+def test_control_status_displays_full_identity_on_success(wrapper):
+    event = FakeEvent()
+    event.unified_msg_origin = "qq-main:GroupMessage:987654321"
+    event.get_sender_id = lambda: "123456789"
+    plugin = wrapper.AgriControlPlugin(object(), {})
+
+    async def collect():
+        return [item async for item in plugin.agri_control_status(event)]
+
+    text = asyncio.run(collect())[0][1]
+    assert "当前 UMO：qq-main:GroupMessage:987654321" in text
+    assert "当前 sender ID：123456789" in text
+    assert "当前映射平台账号：operator" in text
+
+
+def test_control_status_displays_full_identity_on_failure(wrapper):
+    text = wrapper._command_text({
+        "ok": False,
+        "umo": "qq-main:FriendMessage:123456789",
+        "sender_id": "123456789",
+        "message": "当前 AstrBot 身份未映射",
+    })
+    assert "操作未执行：当前 AstrBot 身份未映射" in text
+    assert "当前 UMO：qq-main:FriendMessage:123456789" in text
+    assert "当前 sender ID：123456789" in text
+
+
 def test_tool_arguments_cannot_override_identity_or_credentials(wrapper):
     for name in (
         "start_agri_device", "confirm_agri_device", "stop_agri_device",
@@ -204,5 +252,13 @@ def test_direct_confirmation_is_rendered_as_human_readable_text(wrapper):
         )]
 
     text = asyncio.run(collect())[0][1]
-    assert "微信告警已确认" in text
+    assert "AstrBot 消息告警已确认" in text
     assert "{" not in text
+
+
+def test_metadata_declares_supported_chat_adapters_and_version():
+    metadata = (Path(__file__).resolve().parents[1] / "metadata.yaml").read_text(encoding="utf-8")
+    assert "version: v2.4.0" in metadata
+    assert 'astrbot_version: ">=4.18,<5"' in metadata
+    for adapter in ("weixin_oc", "aiocqhttp", "qq_official", "qq_official_webhook"):
+        assert f"  - {adapter}" in metadata

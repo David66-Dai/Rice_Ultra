@@ -56,3 +56,5 @@ coverage/
 
 # Astrbot
 integrations/*.zip
+!integrations/astrbot_plugin_agri_control.zip
+!integrations/astrbot_plugin_agri_query.zip

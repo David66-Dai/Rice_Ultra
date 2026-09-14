@@ -141,6 +141,22 @@ cd server
 
 请用 `.cmd`，不要直接运行 `.ps1`（Windows 默认禁止脚本）。账号已存在时加 `-Update` 可改密码。
 
+AstrBot 这类只由服务端按身份映射使用的机器人账号用 `-NoLogin` 创建服务账号：
+
+```bat
+cd server
+.\create-user.cmd -Username astrbot -DisplayName "AstrBot 机器人" -NoLogin
+```
+
+`-NoLogin` 不接受密码，库里只写入一段随机且不回显的 BCrypt 哈希，角色默认 `SERVICE`。
+账号保持 `enabled=1`（服务端映射仍然可用），但 `login_enabled=0`：密码登录、记住登录和
+先前签发的访问令牌一律被拒绝。设备权限仍由 `app.devices.control-users` 决定，
+把机器人映射到的用户名加进该列表才能控制设备。
+
+`login_enabled` 是新增列，默认 `b'1'`，且服务端把 `1` 和 `NULL` 都视为“允许登录”，
+因此升级不会影响任何既有账号。已建库的环境执行
+`server/sql/migrations/20260914_service_account_login_flag.sql` 补列并回填。
+
 首次启动、用户表为空且 `conf/config.yaml` 中 `app.auth.bootstrap-admin.enabled=true`
 时，按该配置的 username/password/display-name 创建管理员。示例文件不预置密码。
 `init.sql` 只建表，不再插入固定管理员。创建账号工具也读取同一份 YAML，支持
@@ -163,12 +179,28 @@ cd server
 设备控制现支持指定用户名授权，以及网页、自动识别和 AstrBot 共用的实时状态同步；黄色/红色识别
 结果进入右上角病虫害通知。AstrBot 未指定时长时喷药默认 60 秒，驱虫灯保持开启；显式时长受后端
 上限约束。
-红色识别联动可在设备管理页开启“微信确认”开关：确认前不动作；喷药还执行实时风速联锁，人工喷药
+红色识别联动可在设备管理页开启“AstrBot 消息确认”开关：确认前不动作；喷药还执行实时风速联锁，人工喷药
 必须有有效红色叶害识别。
 配置和接口说明见 [设备权限与通知](docs/device-permissions-and-notifications.md)。
 AstrBot 适配插件与安装说明见
 [设备控制插件](integrations/astrbot_plugin_agri_control/README.md)和
 [农业查询插件](integrations/astrbot_plugin_agri_query/README.md)。
+插件支持个人微信、OneBot v11/NapCat、QQ 官方 WebSocket 和 QQ 官方 Webhook；需要
+AstrBot 4.18 或更高版本。QQ 控制与主动告警需要把目标会话的完整 UMO 及
+sender ID 映射到 Rice Ultra 用户：在目标会话里执行 `/sid`、`/agri_control_status`
+或 `/agri_query_status` 复制真实值，成功和失败都会回显当前 UMO 与 sender ID。
+
+微信和 QQ 可以同时在线：`app.prevention-control.alert-umos` 每多一个会话就多一个告警目标，
+投递状态、重试次数、错误和送达时间**按会话分别记录**（表
+`astrbot_diagnosis_confirmation_target`，见
+`server/sql/migrations/20260914_astrbot_alert_targets.sql`）。因此：
+
+- 微信发送失败不影响 QQ 收到告警，反之亦然；失败的会话独立重试，已成功的会话不会被重发。
+- 只有**确实收到**该条告警的会话才能确认放行设备；未送达的会话确认会被拒绝。
+- 未送达、未确认、过期、身份不匹配或设备版本已变化时，依旧绝不开启设备。
+
+群聊只在被 `@` 时回复属于 AstrBot 的会话唤醒规则，在 AstrBot WebUI 中按群聊 UMO 配置；
+私聊不涉及被 `@`。
 
 #### 历史数据
 

@@ -33,8 +33,10 @@ export function linkageHint(
   const name = task === 'leaf' ? DEVICE_LABELS.pump : DEVICE_LABELS.lamp
   if (deviceError) return `${name}指令未发出：${deviceError}`
   if (confirmationRequired) {
-    const delivery = alertDeliveryStatus === 'FAILED' ? '微信告警发送失败，设备不会开启'
-      : alertDeliveryStatus === 'SENT' ? '等待微信确认' : '微信告警发送中'
+    const delivery = alertDeliveryStatus === 'FAILED' ? 'AstrBot 消息告警发送失败，设备不会开启'
+      : alertDeliveryStatus === 'SENT' ? '等待 AstrBot 消息确认'
+      : alertDeliveryStatus === 'PARTIAL' ? '等待 AstrBot 消息确认（部分会话未送达）'
+      : 'AstrBot 消息告警发送中'
     return `${delivery}${pendingConfirmationId ? ` · 确认编号 ${pendingConfirmationId}` : ''}`
   }
   if (activatedDevice === 'pump') return '已联动开启喷药'

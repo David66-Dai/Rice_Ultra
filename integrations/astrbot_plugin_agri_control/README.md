@@ -3,6 +3,8 @@
 本插件通过 Rice Ultra Java 后端控制 S01 的智能喷药和驱虫灯。
 所有操作使用服务器上的 AstrBot 身份映射，最终仍由平台账号启用状态和
 `app.devices.control-users` 决定权限。成功指令会进入网页共享状态并通知所有网页用户。
+需要 AstrBot 4.18 或更高版本，支持个人微信、OneBot v11/NapCat、QQ 官方 WebSocket
+和 QQ 官方 Webhook 适配器。
 
 插件不读取服务器的 `conf/config.yaml`，也不使用平台账号密码或网页 JWT。
 它只保存一个受限的 AstrBot 集成令牌；该令牌只用于 `/api/astrbot/**` 下的设备控制与只读农业查询，
@@ -139,18 +141,18 @@ app:
 | `/agri_stop 喷药` | 立即发送停止指令 |
 | `/agri_result [请求UUID]` | 查看本地保存的请求结果 |
 | `/agri_test 喷药 5` | 在双开关启用后跳过二次确认执行测试 |
-| `/agri_confirm_alert 确认UUID` | 确认一条已送达的病虫害微信告警 |
+| `/agri_confirm_alert 确认UUID` | 确认一条已送达的病虫害 AstrBot 消息告警 |
 
 对应 LLM 工具为 `start_agri_device`、`confirm_agri_device`、`stop_agri_device`、
 `query_agri_control`、`confirm_diagnosis_control` 和 `test_agri_device`。
 
-斜杠命令面向微信用户，返回中文操作结果而不是原始 JSON；LLM 工具仍返回结构化 JSON，供 Agent
+斜杠命令面向 AstrBot 聊天用户，返回中文操作结果而不是原始 JSON；LLM 工具仍返回结构化 JSON，供 Agent
 读取确认编号、状态和安全拦截原因。
 
-## 病虫害识别微信确认
+## 病虫害识别 AstrBot 消息确认
 
-大屏“设备管理”提供“识别联动微信确认”开关。开关开启时，红色叶害/虫害识别只创建持久化确认单，
-不会立即喷药或开灯。Java 后端通过 AstrBot `/api/v1/im/message` 向配置的微信 UMO 推送确认编号；
+大屏“设备管理”提供“识别联动消息确认”开关。开关开启时，红色叶害/虫害识别只创建持久化确认单，
+不会立即喷药或开灯。Java 后端通过 AstrBot `/api/v1/im/message` 向配置的告警 UMO 推送确认编号；
 收到告警的授权用户发送：
 
 ```text
@@ -167,13 +169,13 @@ UMO、平台账号权限、设备版本和喷药风速；任一条件不满足�
 astrbot-alert-enabled: true
 astrbot-base-url: "http://127.0.0.1:6185"
 astrbot-api-key: "AstrBot WebAPI Key"
-alert-umos: ["接收微信告警的完整 UMO"]
+alert-umos: ["接收 AstrBot 消息告警的完整 UMO"]
 ```
 
 喷药安全阈值同样由后端控制。默认要求 2 分钟内的实时风速不超过 3.0 m/s；人工网页或 AstrBot
 喷药还必须存在 24 小时内的最新红色叶害识别。喷药运行中收到超阈值风速会立即发送停止指令并同步大屏。
-个人微信会把单条文本内的换行压平，因此病虫害确认告警会拆成四条连续的独立消息：摘要、识别与
-拟开启设备、确认编号、确认说明。达到设定时长自动关闭、服务重启后的安全关闭，以及风速联锁关闭
+为兼容不同消息平台的文本展示，病虫害确认告警会拆成四条连续的独立消息：摘要、识别与拟开启设备、
+确认编号、确认说明。达到设定时长自动关闭、服务重启后的安全关闭，以及风速联锁关闭
 或失败，都会向告警 UMO 主动发送一条简短中文设备反馈；直接 `/agri_*` 命令则在当前聊天中立即返回中文结果。
 
 ## 验证边界

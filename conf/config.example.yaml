@@ -33,6 +33,7 @@ app:
   devices:
     # 仅列出的登录用户名可控制设备；空列表默认禁止所有人（包括 ADMIN）。
     # 例如 ["operator1", "operator2"]；修改后重启后端。
+    # 机器人映射到的服务账号也必须写进来才能控制设备，角色本身不授予权限。
     control-users: []
   astrbot-control:
     # AstrBot 使用独立的受限集成令牌，只能访问下面两个设备接口；至少 32 个字符。
@@ -47,13 +48,18 @@ app:
     # AstrBot 农业查询单次日期范围限制。
     max-query-range-days: 31
     # 同时精确匹配会话 UMO 和发送者 ID，再映射到已有平台登录用户名。
+    # 个人微信、OneBot v11/NapCat 和 QQ 官方适配器共用此列表；在各目标会话执行 /sid 复制真实值。
+    # 机器人建议映射到 create-user.cmd -NoLogin 创建的服务账号（enabled=1、login_enabled=0）。
     identities: []
     # identities:
     #   - umo: "从 /agri_control_status 复制"
     #     sender-id: "从 /agri_control_status 复制"
     #     username: "admin"
+    #   - umo: "qq_<botid>:FriendMessage:<会话ID>"
+    #     sender-id: "<发送者ID>"
+    #     username: "astrbot"
   prevention-control:
-    # 首次建库时该值决定“识别联动微信确认”开关；之后以前端保存的数据库值为准。
+    # 首次建库时该值决定“识别联动 AstrBot 消息确认”开关；之后以前端保存的数据库值为准。
     require-astrbot-confirmation-default: true
     # 喷药开启前必须有新鲜风速；人工喷药还必须有有效红色叶害识别。
     spray-safety-enabled: true
@@ -61,11 +67,17 @@ app:
     sensor-max-age: "2m"
     leaf-evidence-max-age: "24h"
     diagnosis-confirmation-ttl: "10m"
-    # 主动微信告警沿用 AstrBot /api/v1/im/message；HTTP 仅允许回环地址，远程必须 HTTPS。
+    # 主动消息告警沿用 AstrBot /api/v1/im/message；API Key 需要 im scope。
+    # HTTP 仅允许回环地址，远程必须 HTTPS；alert-umos 可同时列出微信和 QQ 会话。
+    # 每个会话的投递状态、重试和送达时间分别记录：一个平台失败不影响另一个平台收到告警，
+    # 也只有确实收到该条告警的会话才能确认放行设备。
     astrbot-alert-enabled: false
     astrbot-base-url: "http://127.0.0.1:6185"
     astrbot-api-key: ""
     alert-umos: []
+    # alert-umos:
+    #   - "wx:FriendMessage:<微信会话ID>"
+    #   - "qq_<botid>:FriendMessage:<QQ会话ID>"
   hdfs:
     # WebHDFS（NameNode HTTP 端口）；报告按 point_N/output_yyyyMMdd_HHmm.json 保存。
     web-url: "http://127.0.0.1:9870"

@@ -28,6 +28,7 @@ public class AstrBotDiagnosisConfirmationService {
 		Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
 	private final AstrBotDiagnosisConfirmationRepository confirmations;
+	private final AstrBotDiagnosisConfirmationTargetRepository targets;
 	private final InspectionDiagnosisRepository diagnoses;
 	private final AstrBotIntegrationService integration;
 	private final DeviceActivityService devices;
@@ -37,10 +38,12 @@ public class AstrBotDiagnosisConfirmationService {
 	private final AstrBotAlertSender alerts;
 
 	public AstrBotDiagnosisConfirmationService(AstrBotDiagnosisConfirmationRepository confirmations,
+			AstrBotDiagnosisConfirmationTargetRepository targets,
 			InspectionDiagnosisRepository diagnoses, AstrBotIntegrationService integration,
 			DeviceActivityService devices, PreventionPolicyService policy, PreventionSafetyGate safety,
 			PreventionControlProperties properties, AstrBotAlertSender alerts) {
 		this.confirmations = confirmations;
+		this.targets = targets;
 		this.diagnoses = diagnoses;
 		this.integration = integration;
 		this.devices = devices;
@@ -83,11 +86,11 @@ public class AstrBotDiagnosisConfirmationService {
 		UserAccount user = integration.authenticate(token, request.identity());
 		if (request.originalText() == null || !EXPLICIT_CONFIRMATION.matcher(request.originalText()).find()
 				|| NEGATED_CONFIRMATION.matcher(request.originalText()).find()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "必须由用户当前原消息明确确认该微信告警");
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "必须由用户当前原消息明确确认该 AstrBot 消息告警");
 		}
 		if (!properties.getAlertUmos().stream().filter(value -> value != null)
 				.anyMatch(value -> value.trim().equals(request.identity().umo()))) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前微信会话不是该告警的授权接收会话");
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前 AstrBot 会话不是该告警的授权接收会话");
 		}
 		AstrBotDiagnosisConfirmation row = confirmations.findById(request.confirmationId().toString())
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "防治确认编号不存在"));
@@ -100,8 +103,14 @@ public class AstrBotDiagnosisConfirmationService {
 			confirmations.saveAndFlush(row);
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "防治确认已过期，请重新识别");
 		}
-		if (!"SENT".equals(row.getDeliveryStatus())) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "微信告警尚未成功送达，当前不能确认开启");
+		// Delivery is tracked per session, so only the chat that actually received this alert may
+		// release the device. Another platform succeeding never speaks for this one.
+		AstrBotDiagnosisConfirmationTarget target = targets
+			.findById(new AstrBotDiagnosisConfirmationTarget.Key(row.getId(), request.identity().umo()))
+			.orElse(null);
+		if (target == null || !target.isDelivered()) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+				"当前 AstrBot 会话尚未成功收到这条告警，不能确认开启");
 		}
 		if (!policy.current().requireAstrBotConfirmation()) {
 			row.setStatus("CANCELLED");

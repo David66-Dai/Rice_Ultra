@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class AstrBotAlertSenderTests {
 
 	@Test
-	void confirmationAlertIsSplitIntoIndependentWechatBubbles() {
+	void confirmationAlertIsSplitIntoIndependentAstrBotMessages() {
 		String id = "00000000-0000-4000-8000-000000000099";
 		List<String> blocks = AstrBotAlertSender.alertBlocks(String.join("\n",
 			"🔴 Rice Ultra 病虫害防治确认",
@@ -27,7 +27,7 @@ class AstrBotAlertSenderTests {
 	}
 
 	@Test
-	void automaticFeedbackIsOneCompactWechatMessage() {
+	void automaticFeedbackIsOneCompactAstrBotMessage() {
 		assertThat(AstrBotAlertSender.feedbackMessage("S01", "pump", "风速联锁关闭",
 			"当前风速 7.00 m/s 超过上限 3.00 m/s，已提交关闭喷药指令。"))
 			.contains("站点：S01", "智能喷药", "风速联锁关闭")

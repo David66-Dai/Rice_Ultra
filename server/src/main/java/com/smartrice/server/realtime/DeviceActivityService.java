@@ -172,7 +172,7 @@ public class DeviceActivityService {
 				? user.getUsername() : displayName + "（" + user.getUsername() + "）";
 			try {
 				transactions.executeWithoutResult(status -> events.saveAndFlush(new NotificationEvent("device_control",
-					actor + "用户" + action + "识别联动微信确认开关", Instant.now(), "S01",
+					actor + "用户" + action + "识别联动 AstrBot 确认开关", Instant.now(), "S01",
 					user.getUsername(), displayName, null, null)));
 			}
 			finally {
@@ -327,7 +327,13 @@ public class DeviceActivityService {
 				|| (jwt.getExpiresAt() != null && !jwt.getExpiresAt().isAfter(Instant.now()))) {
 			throw AuthException.unauthorized();
 		}
-		return currentUser(uid.longValue());
+		UserAccount user = currentUser(uid.longValue());
+		// 网页访问令牌路径：服务账号不可登录，任何访问令牌都不代表它。
+		// 集成路径走 currentUser(Long)，不受这里限制。
+		if (!user.isLoginEnabled()) {
+			throw AuthException.loginDisabled();
+		}
+		return user;
 	}
 
 	private UserAccount currentUser(Long userId) {

@@ -27,6 +27,11 @@ public class AuthException extends RuntimeException {
 		return new AuthException(HttpStatus.FORBIDDEN, "account_disabled", "账号已停用，请联系管理员");
 	}
 
+	/** 服务账号：后端按精确身份映射授权，禁止任何形式的网页登录。 */
+	public static AuthException loginDisabled() {
+		return new AuthException(HttpStatus.FORBIDDEN, "login_disabled", "该账号为服务账号，不能登录网页");
+	}
+
 	public static AuthException invalidRememberToken() {
 		return new AuthException(HttpStatus.UNAUTHORIZED, "invalid_remember_token", "记住登录已失效，请重新输入密码");
 	}

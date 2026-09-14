@@ -1,7 +1,12 @@
 name: astrbot_plugin_agri_control
 display_name: 数智稻安设备控制
 desc: 通过 Rice Ultra Java 后端控制喷药和驱虫灯，接入平台权限、共享状态、通知与二次确认。
-version: v2.3.0
+version: v2.4.0
 author: danglong
 repo: ""
-astrbot_version: ">=4.5.7,<5"
+astrbot_version: ">=4.18,<5"
+support_platforms:
+  - weixin_oc
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook

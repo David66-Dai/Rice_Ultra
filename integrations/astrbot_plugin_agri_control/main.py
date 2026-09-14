@@ -31,13 +31,23 @@ def _device_name(value: Any) -> str:
     return {"pump": "智能喷药", "lamp": "智能驱虫灯"}.get(str(value), "设备")
 
 
+def _identity_text(value: dict[str, Any]) -> str:
+    if "umo" not in value and "sender_id" not in value:
+        return ""
+    umo = _text(value.get("umo")) or "（缺失）"
+    sender_id = _text(value.get("sender_id")) or "（缺失）"
+    return f"当前 UMO：{umo}\n当前 sender ID：{sender_id}"
+
+
 def _command_text(value: dict[str, Any]) -> str:
     """Render direct slash-command results for people; LLM tools retain JSON above."""
     if not isinstance(value, dict):
         return "操作结果异常，请查看网页共享状态。"
     message = str(value.get("message") or "")
+    identity = _identity_text(value)
     if value.get("ok") is not True:
-        return "操作未执行：" + (message or "后端未返回可用原因。")
+        result = "操作未执行：" + (message or "后端未返回可用原因。")
+        return result + ("\n" + identity if identity else "")
 
     status = value.get("status")
     state = value.get("state") if isinstance(value.get("state"), dict) else {}
@@ -49,7 +59,7 @@ def _command_text(value: dict[str, Any]) -> str:
     if status == "confirmed":
         auto_off = value.get("auto_off_at")
         timer = "喷药将按后端设定时长自动停止。" if device == "智能喷药" and auto_off else ""
-        return f"微信告警已确认，已提交开启{device}指令。{timer}实际设备状态仍需现场确认。"
+        return f"AstrBot 消息告警已确认，已提交开启{device}指令。{timer}实际设备状态仍需现场确认。"
     if status == "command_sent":
         enabled = state.get("enabled")
         action = "开启" if enabled is True else "关闭" if enabled is False else "处理"
@@ -60,7 +70,8 @@ def _command_text(value: dict[str, Any]) -> str:
     if value.get("mapped_username"):
         permission = "具备控制权限" if value.get("can_control") else "仅可查看"
         availability = "设备链路可用" if value.get("device_available") else "设备链路不可用"
-        return f"当前映射平台账号：{value['mapped_username']}；{permission}；{availability}。"
+        status_text = f"当前映射平台账号：{value['mapped_username']}；{permission}；{availability}。"
+        return (identity + "\n" if identity else "") + status_text
     if status == "completed":
         return "已查询到最近一次操作结果。" + (message if message else "")
     return message or "操作已处理，请以网页共享状态和现场反馈为准。"
@@ -120,10 +131,10 @@ class AgriControlPlugin(Star):
     async def confirm_diagnosis_control(
         self, event: AstrMessageEvent, confirmation_id: str
     ) -> str:
-        """仅当用户明确确认一条 AstrBot 微信病虫害告警时调用。
+        """仅当用户明确确认一条 AstrBot 病虫害消息告警时调用。
 
         Args:
-            confirmation_id(string): 微信告警中的完整确认 UUID，必须原样传入。
+            confirmation_id(string): AstrBot 消息告警中的完整确认 UUID，必须原样传入。
         """
         return _result(await self.client.confirm_diagnosis(_identity(event), confirmation_id))
 
@@ -177,7 +188,7 @@ class AgriControlPlugin(Star):
 
     @filter.command("agri_confirm_alert")
     async def agri_confirm_alert(self, event: AstrMessageEvent, confirmation_id: str):
-        """确认病虫害微信告警：/agri_confirm_alert <确认UUID>"""
+        """确认病虫害 AstrBot 消息告警：/agri_confirm_alert <确认UUID>"""
         yield event.plain_result(_command_text(
             await self.client.confirm_diagnosis(_identity(event), confirmation_id)
         ))

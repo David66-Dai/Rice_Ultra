@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS user_account (
   display_name    VARCHAR(64)  NOT NULL,
   role            VARCHAR(32)  NOT NULL DEFAULT 'ADMIN',
   enabled         BIT(1)       NOT NULL DEFAULT b'1',
+  -- 是否允许密码 / 记住登录进入网页端。默认 b'1'；服务端把 b'1' 和 NULL 都当作允许登录，
+  -- 只有显式的 b'0' 才禁用，因此补列升级不会影响任何既有账号。
+  -- 服务账号（AstrBot）保持 enabled=b'1' 但 login_enabled=b'0'：
+  -- 服务端仍可按 UMO + sender ID 精确映射授权，任何人都登录不了网页。
+  login_enabled   BIT(1)       NULL DEFAULT b'1',
   failed_attempts INT          NOT NULL DEFAULT 0,
   locked_until    DATETIME(6)  NULL,
   last_login_at   DATETIME(6)  NULL,
@@ -190,4 +195,19 @@ CREATE TABLE IF NOT EXISTS astrbot_diagnosis_confirmation (
   PRIMARY KEY (id),
   UNIQUE KEY uk_astrbot_diagnosis_confirmation (diagnosis_id),
   KEY idx_astrbot_diagnosis_pending (status, delivery_status, due_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 每个告警会话（UMO）一行投递状态：微信失败不影响 QQ，QQ 失败不影响微信。
+-- 只有 delivery_status='SENT' 的会话才被允许确认对应的防治告警。
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS astrbot_diagnosis_confirmation_target (
+  confirmation_id VARCHAR(36) NOT NULL,
+  umo VARCHAR(255) NOT NULL,
+  delivery_status VARCHAR(24) NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  sent_at DATETIME(6) NULL,
+  last_error VARCHAR(1000) NULL,
+  PRIMARY KEY (confirmation_id, umo),
+  KEY idx_astrbot_confirmation_target_status (confirmation_id, delivery_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

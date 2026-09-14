@@ -40,6 +40,10 @@ public class RememberMeService {
 
 	@Transactional
 	public String issue(UserAccount user, String userAgent) {
+		// 服务账号永远不会走到这里；保留这道闸门，任何新的调用方也签发不出记住登录令牌。
+		if (!user.isLoginEnabled()) {
+			throw AuthException.loginDisabled();
+		}
 		Instant now = Instant.now();
 		String series = randomToken(16);
 		String token = randomToken(32);

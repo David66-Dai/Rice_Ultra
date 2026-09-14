@@ -48,6 +48,11 @@ public class AuthService {
 		if (!user.isEnabled()) {
 			throw AuthException.accountDisabled();
 		}
+		// 服务账号在核对密码之前就被拒绝：库里的随机哈希永远无人知晓，这里再从逻辑上封死登录。
+		if (!user.isLoginEnabled()) {
+			passwordEncoder.matches(password, dummyHash);
+			throw AuthException.loginDisabled();
+		}
 		if (user.isLockedAt(now)) {
 			throw AuthException.accountLocked(minutesUntil(user.getLockedUntil(), now));
 		}
@@ -79,6 +84,11 @@ public class AuthService {
 			rememberMeService.revokeAllForUser(user.getId());
 			throw AuthException.accountDisabled();
 		}
+		// 账号被改为服务账号后，先前签发的记住登录令牌立即作废。
+		if (!user.isLoginEnabled()) {
+			rememberMeService.revokeAllForUser(user.getId());
+			throw AuthException.loginDisabled();
+		}
 		if (user.isLockedAt(now)) {
 			throw AuthException.accountLocked(minutesUntil(user.getLockedUntil(), now));
 		}
@@ -99,6 +109,10 @@ public class AuthService {
 		UserAccount user = users.findById(userId).orElseThrow(AuthException::unauthorized);
 		if (!user.isEnabled()) {
 			throw AuthException.accountDisabled();
+		}
+		// 服务账号拿不到访问令牌；万一存在历史令牌，这里也不认。
+		if (!user.isLoginEnabled()) {
+			throw AuthException.loginDisabled();
 		}
 		return UserInfo.from(user);
 	}

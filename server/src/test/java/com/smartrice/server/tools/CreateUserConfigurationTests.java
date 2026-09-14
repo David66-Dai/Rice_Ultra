@@ -55,6 +55,53 @@ class CreateUserConfigurationTests {
 	}
 
 	@Test
+	void anOrdinaryAccountStillRequiresAPasswordAndKeepsWebLogin() {
+		CreateUserTool.Request request = CreateUserTool.Request.parse(new String[] {
+			"--username", "zhangsan", "--password", "FixturePassword1"});
+		request.validate();
+
+		assertThat(request.loginEnabled).isTrue();
+		assertThat(request.enabled).isTrue();
+		assertThat(request.role).isEqualTo("ADMIN");
+		assertThat(request.password).isEqualTo("FixturePassword1");
+
+		assertThatThrownBy(() -> {
+			CreateUserTool.Request missing = CreateUserTool.Request.parse(new String[] {"--username", "zhangsan"});
+			missing.validate();
+		}).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("--password");
+	}
+
+	@Test
+	void noLoginCreatesAnEnabledServiceAccountThatTakesNoPassword() {
+		CreateUserTool.Request request = CreateUserTool.Request.parse(new String[] {
+			"--username", "astrbot", "--display-name", "AstrBot 机器人", "--no-login"});
+		request.validate();
+
+		// Enabled, so the server-side AstrBot identity mapping still resolves it...
+		assertThat(request.enabled).isTrue();
+		// ...but web login is off and no password was taken at all.
+		assertThat(request.loginEnabled).isFalse();
+		assertThat(request.password).isNull();
+		assertThat(request.role).isEqualTo("SERVICE");
+		assertThat(request.displayName).isEqualTo("AstrBot 机器人");
+	}
+
+	@Test
+	void aServiceAccountRefusesAPasswordAndKeepsAnExplicitRole() {
+		CreateUserTool.Request withPassword = CreateUserTool.Request.parse(new String[] {
+			"--username", "astrbot", "--no-login", "--password", "FixturePassword1"});
+		assertThatThrownBy(withPassword::validate)
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("不接受密码");
+
+		CreateUserTool.Request explicitRole = CreateUserTool.Request.parse(new String[] {
+			"--username", "astrbot", "--no-login", "--role", "operator"});
+		explicitRole.validate();
+		assertThat(explicitRole.role).isEqualTo("OPERATOR");
+		assertThat(explicitRole.loginEnabled).isFalse();
+	}
+
+	@Test
 	void unresolvedDatabasePlaceholdersDoNotExposeTheirOriginalValuesOrCause() throws Exception {
 		ConfigurationFixtures.writeConfiguration(directory);
 		StandardEnvironment environment = ConfigurationFixtures.environment(directory, Map.of());

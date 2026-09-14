@@ -1,6 +1,8 @@
 # Create / update a Smart Rice login account (BCrypt hash into MySQL user_account).
 # Use create-user.cmd so Windows execution policy does not block this file:
 #   .\create-user.cmd -Username zhangsan -Password "Secret#123" -DisplayName "Zhang San"
+# Service account (no web login, no password, mapped by the server only):
+#   .\create-user.cmd -Username astrbot -DisplayName "AstrBot Bot" -NoLogin
 [CmdletBinding()]
 param(
 	[Parameter(Position = 0)]
@@ -13,10 +15,11 @@ param(
 	[string]$DisplayName,
 
 	[Parameter(Position = 3)]
-	[string]$Role = "ADMIN",
+	[string]$Role,
 
 	[switch]$Update,
 	[switch]$Disabled,
+	[switch]$NoLogin,
 	[switch]$Help
 )
 
@@ -32,7 +35,11 @@ if ([string]::IsNullOrWhiteSpace($Username)) {
 	Write-Error "Missing -Username. Example: .\create-user.cmd -Username zhangsan -Password 'Secret#123' -DisplayName 'Zhang San'"
 }
 
-if ([string]::IsNullOrEmpty($Password)) {
+if ($NoLogin -and -not [string]::IsNullOrEmpty($Password)) {
+	Write-Error "-NoLogin service accounts take no password. Remove -Password."
+}
+
+if ((-not $NoLogin) -and [string]::IsNullOrEmpty($Password)) {
 	$secure = Read-Host "Password (hidden)" -AsSecureString
 	$confirm = Read-Host "Password again" -AsSecureString
 	$bstr1 = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -51,15 +58,25 @@ if ([string]::IsNullOrEmpty($Password)) {
 }
 
 $env:CREATE_USER_USERNAME = $Username.Trim()
-$env:CREATE_USER_PASSWORD = $Password
+if ($NoLogin) {
+	Remove-Item Env:CREATE_USER_PASSWORD -ErrorAction SilentlyContinue
+} else {
+	$env:CREATE_USER_PASSWORD = $Password
+}
 if (-not [string]::IsNullOrWhiteSpace($DisplayName)) {
 	$env:CREATE_USER_DISPLAY_NAME = $DisplayName.Trim()
 } else {
 	Remove-Item Env:CREATE_USER_DISPLAY_NAME -ErrorAction SilentlyContinue
 }
-$env:CREATE_USER_ROLE = $Role
+if (-not [string]::IsNullOrWhiteSpace($Role)) {
+	$env:CREATE_USER_ROLE = $Role.Trim()
+} else {
+	# Let the Java tool pick the default: ADMIN normally, SERVICE with -NoLogin.
+	Remove-Item Env:CREATE_USER_ROLE -ErrorAction SilentlyContinue
+}
 $env:CREATE_USER_UPDATE = $(if ($Update) { "true" } else { "false" })
 $env:CREATE_USER_ENABLED = $(if ($Disabled) { "false" } else { "true" })
+$env:CREATE_USER_LOGIN_ENABLED = $(if ($NoLogin) { "false" } else { "true" })
 
 try {
 	& .\mvnw.cmd -q -DskipTests compile exec:java
@@ -71,4 +88,5 @@ try {
 	Remove-Item Env:CREATE_USER_ROLE -ErrorAction SilentlyContinue
 	Remove-Item Env:CREATE_USER_UPDATE -ErrorAction SilentlyContinue
 	Remove-Item Env:CREATE_USER_ENABLED -ErrorAction SilentlyContinue
+	Remove-Item Env:CREATE_USER_LOGIN_ENABLED -ErrorAction SilentlyContinue
 }

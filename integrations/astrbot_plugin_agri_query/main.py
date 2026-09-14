@@ -169,11 +169,23 @@ class AgriQueryPlugin(Star):
     @filter.command("agri_query_status")
     async def agri_query_status(self, event: AstrMessageEvent):
         """检查 AstrBot 身份映射及 Java 农业查询接口。"""
+        umo = str(getattr(event, "unified_msg_origin", "") or "") or "（缺失）"
+        sender = str(event.get_sender_id() or "") or "（缺失）"
+        identity_text = f"当前 UMO：{umo}\n当前 sender ID：{sender}"
         try:
             data = await self._post(event, "/api/astrbot/agriculture/status", {})
-            yield event.plain_result("农业查询插件运行正常。\n" + self._dump(data))
+            username = str(data.get("username") or "（未映射）")
+            display_name = str(data.get("displayName") or username)
+            station = str(data.get("defaultStation") or "（未知）")
+            max_range = str(data.get("maxRangeDays") or "（未知）")
+            source = str(data.get("dataSource") or "（未知）")
+            status_text = (
+                f"映射账号：{display_name}（{username}）\n"
+                f"默认站点：{station}\n最大查询范围：{max_range} 天\n数据源：{source}"
+            )
+            yield event.plain_result("农业查询插件运行正常。\n" + identity_text + "\n" + status_text)
         except Exception as exc:
-            yield event.plain_result(f"农业查询插件不可用：{exc}\n当前 UMO：{getattr(event, 'unified_msg_origin', '')}")
+            yield event.plain_result(f"农业查询插件不可用：{exc}\n{identity_text}")
 
     @filter.command("agri_query_all")
     async def agri_query_all(self, event: AstrMessageEvent, date: str):

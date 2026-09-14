@@ -38,6 +38,17 @@ public class UserAccount {
 	@Column(nullable = false)
 	private boolean enabled = true;
 
+	/**
+	 * 是否允许用密码 / 记住登录进入网页端。服务账号（例如 AstrBot 机器人）保持
+	 * enabled=true 但 login_enabled=false：后端仍可按精确身份映射授权它，
+	 * 任何人都无法用它登录网页。
+	 *
+	 * <p>刻意声明为可空并把 {@code null} 视作“允许登录”：ddl-auto=update 给已有表补列时
+	 * 不会给旧行填 0，升级后所有既有账号的登录行为完全不变。只有显式的 {@code false} 才禁用登录。</p>
+	 */
+	@Column(name = "login_enabled")
+	private Boolean loginEnabled = Boolean.TRUE;
+
 	@Column(name = "failed_attempts", nullable = false)
 	private int failedAttempts;
 
@@ -111,6 +122,14 @@ public class UserAccount {
 
 	public void setEnabled(boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public boolean isLoginEnabled() {
+		return loginEnabled == null || loginEnabled;
+	}
+
+	public void setLoginEnabled(boolean loginEnabled) {
+		this.loginEnabled = loginEnabled;
 	}
 
 	public int getFailedAttempts() {
