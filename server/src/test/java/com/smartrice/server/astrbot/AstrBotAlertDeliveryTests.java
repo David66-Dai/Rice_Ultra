@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartrice.server.realtime.DeviceActivityService;
@@ -71,6 +75,54 @@ class AstrBotAlertDeliveryTests {
 	@AfterEach
 	void tearDown() {
 		sender.close();
+	}
+
+	@Test
+	void bothSessionsReceiveTheWholeAlertWhenBothAreOnline() throws Exception {
+		everySessionReachable();
+		String id = pending();
+		int blocks = AstrBotAlertSender.alertBlocks(alertText(id)).size();
+
+		sender.sendAfterCommit(id);
+
+		await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(
+			confirmations.findById(id).orElseThrow().getDeliveryStatus()).isEqualTo("SENT"));
+		// WeChat and QQ each received every block of the same alert -- not one instead of the other.
+		assertThat(sent(WECHAT)).isEqualTo(blocks);
+		assertThat(sent(QQ)).isEqualTo(blocks);
+		assertThat(targets.findByKeyConfirmationId(id)).hasSize(2)
+			.allSatisfy(target -> {
+				assertThat(target.isDelivered()).isTrue();
+				assertThat(target.getSentAt()).isNotNull();
+				assertThat(target.getAttempts()).isEqualTo(1);
+				assertThat(target.getLastError()).isNull();
+			});
+	}
+
+	@Test
+	void automaticDeviceFeedbackAlsoReachesBothSessions() throws Exception {
+		everySessionReachable();
+
+		sender.sendDeviceFeedback("S01", "pump", false, "自动关闭", "已到达设定时长，已执行自动关闭。");
+
+		await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+			assertThat(sent(WECHAT)).isEqualTo(1);
+			assertThat(sent(QQ)).isEqualTo(1);
+		});
+		// Nothing failed, so no big-screen fallback notification is raised.
+		verify(activity, never()).publishPestDisease(anyString(), anyString());
+	}
+
+	@Test
+	void deviceFeedbackStillReachesTheOnlineSessionWhenTheOtherIsDown() throws Exception {
+		onlyThisSessionFails(WECHAT);
+
+		sender.sendDeviceFeedback("S01", "lamp", false, "自动关闭", "已到达设定时长，已执行自动关闭。");
+
+		await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(sent(QQ)).isEqualTo(1));
+		assertThat(sent(WECHAT)).isEqualTo(1);
+		// The operator watching the failed platform is told through the shared screen instead.
+		verify(activity, timeout(5000)).publishPestDisease(eqStation(), contains("未送达"));
 	}
 
 	@Test
@@ -176,6 +228,24 @@ class AstrBotAlertDeliveryTests {
 			"确认编号：" + id,
 			"请在 10 分钟内由收到告警的授权用户发送：/agri_confirm_alert " + id,
 			"确认时后端会再次核验设备版本与安全条件；未确认不会开启设备。");
+	}
+
+	private static String eqStation() {
+		return org.mockito.ArgumentMatchers.eq("S01");
+	}
+
+	private static String contains(String fragment) {
+		return org.mockito.ArgumentMatchers.contains(fragment);
+	}
+
+	/** Both platforms online: every configured session accepts the message. */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private void everySessionReachable() throws Exception {
+		when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(invocation -> {
+			requestsPerUmo.computeIfAbsent(umoOf(invocation.getArgument(0)), key -> new AtomicInteger())
+				.incrementAndGet();
+			return okResponse();
+		});
 	}
 
 	/** Every session is reachable except the named one, which always refuses the connection. */
