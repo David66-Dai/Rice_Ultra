@@ -68,7 +68,7 @@ public class RestInferenceClient implements InferenceClient {
 				log.warn("推理服务 HTTP {} {}", status, body);
 				throw new ResponseStatusException(
 					status == 400 ? HttpStatus.BAD_REQUEST : HttpStatus.BAD_GATEWAY,
-					status == 400 ? "无法识别该图片，请换一张后重试" : "推理服务暂不可用");
+					status == 400 ? badRequestMessage(body) : "推理服务暂不可用");
 			}
 			Map<String, Object> result = json.readValue(body, MAP);
 			if (result == null || result.isEmpty()) {
@@ -83,6 +83,19 @@ public class RestInferenceClient implements InferenceClient {
 			log.warn("调用推理服务失败: {}", ex.toString());
 			throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "推理服务暂不可用");
 		}
+	}
+
+	private String badRequestMessage(String body) {
+		try {
+			Map<String, Object> parsed = json.readValue(body, MAP);
+			Object detail = parsed.get("detail");
+			if (detail instanceof String text && !text.isBlank() && text.length() <= 180) {
+				return text;
+			}
+		}
+		catch (Exception ignored) {
+		}
+		return "无法识别该文件，请换一份后重试";
 	}
 
 	static byte[] multipart(String filename, String contentType, byte[] bytes) throws IOException {

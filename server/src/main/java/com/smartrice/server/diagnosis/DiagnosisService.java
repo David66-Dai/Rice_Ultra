@@ -53,12 +53,14 @@ public class DiagnosisService {
 		if (!"S01".equals(station)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "站点离线，暂不可识别");
 		}
-		String kind = validateTask(task);
+		String inferTask = validateTask(task);
+		String kind = persistTask(inferTask);
 		if (file == null || file.isEmpty()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请上传图片文件");
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+				"leaf-hsi".equals(inferTask) ? "请上传高光谱立方体（.h5）" : "请上传图片文件");
 		}
-		Map<String, Object> result = inference.predict(kind, file);
-		ParsedPrediction parsed = parse(kind, result, file.getOriginalFilename());
+		Map<String, Object> result = inference.predict(inferTask, file);
+		ParsedPrediction parsed = parse(inferTask, result, file.getOriginalFilename());
 		InspectionDiagnosis row = new InspectionDiagnosis();
 		row.setStationId(station);
 		row.setTask(kind);
@@ -145,15 +147,19 @@ public class DiagnosisService {
 	}
 
 	private static String validateTask(String task) {
-		if ("leaf".equals(task) || "pest".equals(task)) {
+		if ("leaf".equals(task) || "pest".equals(task) || "leaf-hsi".equals(task)) {
 			return task;
 		}
-		throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "识别任务必须为 leaf 或 pest");
+		throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "识别任务必须为 leaf、pest 或 leaf-hsi");
+	}
+
+	private static String persistTask(String task) {
+		return "leaf-hsi".equals(task) ? "leaf" : task;
 	}
 
 	private ParsedPrediction parse(String task, Map<String, Object> result, String fallbackName) {
 		String filename = firstText(result.get("filename"), fallbackName);
-		if ("leaf".equals(task)) {
+		if ("leaf".equals(task) || "leaf-hsi".equals(task)) {
 			String label = firstText(result.get("label"), null);
 			String labelZh = firstText(result.get("label_zh"), firstText(result.get("labelZh"), label));
 			Double confidence = asDouble(result.get("confidence"));
@@ -161,7 +167,10 @@ public class DiagnosisService {
 			if (hasDamage == null) {
 				hasDamage = asBoolean(result.get("hasLeafDamage"));
 			}
-			return new ParsedPrediction(filename, label, labelZh, confidence, 0, AlertLevel.fromLeaf(label, labelZh, hasDamage));
+			AlertLevel alert = "leaf-hsi".equals(task)
+				? AlertLevel.fromLeafHsi(label, labelZh, hasDamage)
+				: AlertLevel.fromLeaf(label, labelZh, hasDamage);
+			return new ParsedPrediction(filename, label, labelZh, confidence, 0, alert);
 		}
 		int count = pestCount(result);
 		String pestLabel = pestLabel(result);

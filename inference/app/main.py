@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import load_inference_settings
+from .hsi import leaf_hsi_weights_path, predict_leaf_hsi
 from .predictors import leaf_weights_path, pest_weights_path, predict_leaf, predict_pest
 
 settings = load_inference_settings()
@@ -31,6 +32,7 @@ def health() -> dict:
         "models": {
             "leaf": leaf_weights_path().is_file(),
             "pest": pest_weights_path().is_file(),
+            "leaf_hsi": leaf_hsi_weights_path().is_file(),
         },
     }
 
@@ -45,3 +47,9 @@ async def leaf(file: UploadFile = File(...)) -> dict:
 async def pest(file: UploadFile = File(...)) -> dict:
     raw = await file.read()
     return predict_pest(raw, file.filename)
+
+
+@app.post("/predict/leaf-hsi")
+async def leaf_hsi(file: UploadFile = File(...)) -> dict:
+    raw = await file.read()
+    return predict_leaf_hsi(raw, file.filename)

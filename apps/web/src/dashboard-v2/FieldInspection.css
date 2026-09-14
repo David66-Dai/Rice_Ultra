@@ -722,7 +722,7 @@
 .recognition-list {
   display: grid;
   flex: 1;
-  grid-template-rows: repeat(3, minmax(110px, 1fr));
+  grid-template-rows: minmax(100px, 1fr) minmax(100px, 1fr) minmax(148px, 1.45fr);
   gap: 9px;
   padding: 11px;
 }
@@ -837,6 +837,305 @@ button.recognition-card {
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+
+.recognition-card--hsi-core {
+  --recognition-color: #7ef0ff;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  overflow: visible;
+  border-color: color-mix(in srgb, #8b5cff 45%, #3de0c5);
+  background:
+    linear-gradient(120deg, rgba(88, 42, 180, 0.28), transparent 42%),
+    linear-gradient(160deg, rgba(8, 86, 118, 0.55), rgba(4, 24, 52, 0.88));
+  box-shadow:
+    inset 0 0 28px rgba(91, 230, 255, 0.12),
+    0 0 18px rgba(126, 80, 255, 0.18);
+}
+
+.recognition-card--hsi-core::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  background-size: 180% 100%;
+  animation: hsi-sheen 4.8s linear infinite;
+  content: "";
+}
+
+.hsi-core__copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.hsi-upload-orb {
+  --hsi-pulse: 2.8s;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 96px;
+  place-items: center;
+  padding: 0;
+  overflow: visible;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.hsi-upload-orb__halo,
+.hsi-upload-orb__wave,
+.hsi-upload-orb__spark,
+.hsi-upload-orb__ring {
+  position: absolute;
+  inset: -4px;
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.hsi-upload-orb__halo {
+  background:
+    radial-gradient(circle, rgba(126, 240, 255, 0.42) 0%, rgba(124, 77, 255, 0.16) 42%, transparent 72%);
+  filter: blur(0.4px);
+  animation: hsi-bloom var(--hsi-pulse) ease-in-out infinite;
+}
+
+.hsi-upload-orb__wave {
+  inset: 10px;
+  border: 1.5px solid rgba(126, 240, 255, 0.7);
+  box-shadow:
+    0 0 10px rgba(80, 220, 255, 0.35),
+    inset 0 0 8px rgba(167, 80, 255, 0.2);
+  animation: hsi-radar var(--hsi-pulse) cubic-bezier(0.12, 0.7, 0.28, 1) infinite;
+}
+
+.hsi-upload-orb__wave--late {
+  border-color: rgba(255, 176, 90, 0.55);
+  animation-delay: calc(var(--hsi-pulse) / -2);
+}
+
+.hsi-upload-orb__spark {
+  inset: -7px;
+  background: repeating-conic-gradient(
+    from 90deg,
+    rgba(255, 255, 255, 0.9) 0 1.4deg,
+    transparent 1.4deg 32deg
+  );
+  opacity: 0.45;
+  animation: hsi-orbit 9s linear infinite reverse;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+}
+
+.hsi-upload-orb__ring {
+  background: conic-gradient(
+    from 0deg,
+    #7c4dff,
+    #2196f3,
+    #00e5a8,
+    #ffe566,
+    #ff7a45,
+    #ff4d8d,
+    #7c4dff
+  );
+  filter: saturate(1.15);
+  animation: hsi-orbit 2.4s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+}
+
+.hsi-upload-orb__ring::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 180deg,
+    transparent 0 62%,
+    rgba(255, 255, 255, 0.95) 72%,
+    transparent 82% 100%
+  );
+  animation: hsi-orbit 1.6s linear infinite reverse;
+  content: "";
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+}
+
+.hsi-upload-orb__core {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(168, 242, 255, 0.5);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.28), transparent 40%),
+    linear-gradient(160deg, #15456f, #07162d 70%);
+  box-shadow:
+    inset 0 0 14px rgba(80, 220, 255, 0.28),
+    0 0 14px rgba(80, 200, 255, 0.22);
+  color: #e8fbff;
+  text-align: center;
+  animation: hsi-core-breathe 3.2s ease-in-out infinite;
+}
+
+.hsi-upload-orb__core::before {
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(from 120deg, transparent 40%, rgba(126, 240, 255, 0.22), transparent 70%);
+  animation: hsi-orbit 6s linear infinite;
+  content: "";
+}
+
+.hsi-upload-orb__core small,
+.hsi-upload-orb__core strong {
+  position: relative;
+  z-index: 1;
+}
+
+.hsi-upload-orb__core small {
+  color: #7ad7ea;
+  font-size: 7px;
+  letter-spacing: 0.16em;
+}
+
+.hsi-upload-orb__core strong {
+  margin-top: 2px;
+  color: #f4feff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hsi-upload-orb.is-busy {
+  --hsi-pulse: 1.1s;
+}
+
+.hsi-upload-orb.is-busy .hsi-upload-orb__ring {
+  animation-duration: 0.55s;
+}
+
+.hsi-upload-orb.is-busy .hsi-upload-orb__spark {
+  opacity: 0.85;
+  animation-duration: 2.4s;
+}
+
+.hsi-upload-orb.is-ready .hsi-upload-orb__core {
+  border-color: rgba(80, 230, 157, 0.78);
+}
+
+.hsi-upload-orb.is-ready .hsi-upload-orb__wave {
+  border-color: rgba(80, 230, 157, 0.7);
+}
+
+.hsi-upload-orb.is-warn .hsi-upload-orb__core {
+  border-color: rgba(239, 195, 79, 0.85);
+}
+
+.hsi-upload-orb.is-warn .hsi-upload-orb__wave {
+  border-color: rgba(239, 195, 79, 0.7);
+}
+
+.hsi-upload-orb:hover:not(:disabled) .hsi-upload-orb__core {
+  transform: scale(1.05);
+}
+
+.hsi-upload-orb:hover:not(:disabled) .hsi-upload-orb__halo {
+  animation-duration: 1.6s;
+}
+
+.hsi-upload-orb:focus-visible {
+  outline: 1px solid #7ef0ff;
+  outline-offset: 4px;
+}
+
+.hsi-upload-orb:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hsi-upload-orb:disabled .hsi-upload-orb__wave,
+.hsi-upload-orb:disabled .hsi-upload-orb__spark {
+  animation-play-state: paused;
+}
+
+@keyframes hsi-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hsi-bloom {
+  0%, 100% {
+    opacity: 0.42;
+    transform: scale(0.96);
+    filter: hue-rotate(0deg) blur(0.4px);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.12);
+    filter: hue-rotate(28deg) blur(0.2px);
+  }
+  70% {
+    opacity: 0.7;
+    transform: scale(1.04);
+    filter: hue-rotate(-18deg) blur(0.6px);
+  }
+}
+
+@keyframes hsi-radar {
+  0% {
+    transform: scale(0.78);
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.18;
+  }
+  100% {
+    transform: scale(1.48);
+    opacity: 0;
+  }
+}
+
+@keyframes hsi-core-breathe {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 12px rgba(80, 220, 255, 0.25),
+      0 0 10px rgba(80, 220, 255, 0.22);
+  }
+  35% {
+    box-shadow:
+      inset 0 0 18px rgba(150, 90, 255, 0.38),
+      0 0 18px rgba(126, 80, 255, 0.42);
+  }
+  65% {
+    box-shadow:
+      inset 0 0 16px rgba(255, 176, 90, 0.28),
+      0 0 16px rgba(255, 122, 69, 0.32);
+  }
+}
+
+@keyframes hsi-sheen {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hsi-upload-orb__halo,
+  .hsi-upload-orb__wave,
+  .hsi-upload-orb__spark,
+  .hsi-upload-orb__ring,
+  .hsi-upload-orb__ring::after,
+  .hsi-upload-orb__core,
+  .hsi-upload-orb__core::before {
+    animation: none;
+  }
 }
 
 .recognition-progress {

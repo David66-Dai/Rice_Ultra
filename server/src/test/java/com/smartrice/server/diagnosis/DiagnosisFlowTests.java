@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -184,6 +185,36 @@ class DiagnosisFlowTests {
 		verifyNoInteractions(inference);
 
 		assertThat(diagnoses.count()).isZero();
+	}
+
+	@Test
+	void hyperspectralLeafStoresAsLeafTask() throws Exception {
+		when(inference.predict(eq("leaf-hsi"), any())).thenReturn(Map.of(
+			"task", "leaf-hsi",
+			"label", "Brown Spot",
+			"label_zh", "褐斑病",
+			"confidence", 0.88,
+			"has_leaf_damage", true,
+			"severity", 2.1
+		));
+
+		mvc.perform(multipart("/api/diagnosis/leaf-hsi")
+				.file(new MockMultipartFile("file", "cube.h5", "application/octet-stream", new byte[] {1, 2, 3, 4}))
+				.param("stationId", "S01")
+				.with(jwt()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.stationId").value("S01"))
+			.andExpect(jsonPath("$.task").value("leaf"))
+			.andExpect(jsonPath("$.labelZh").value("褐斑病"))
+			.andExpect(jsonPath("$.alertLevel").value("yellow"))
+			.andExpect(jsonPath("$.stationAlertLevel").value("yellow"))
+			.andExpect(jsonPath("$.result.task").value("leaf-hsi"))
+			.andExpect(jsonPath("$.activatedDevice").value(nullValue()));
+
+		assertThat(diagnoses.findAll()).singleElement().satisfies(row -> {
+			assertThat(row.getTask()).isEqualTo("leaf");
+			assertThat(row.getLabelZh()).isEqualTo("褐斑病");
+		});
 	}
 
 	private static MockMultipartFile image(String name) {

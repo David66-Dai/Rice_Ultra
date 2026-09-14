@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import type { DiagnosisRecord, DiagnosisTask, StationAlertStatus } from '@smart-rice-security/shared'
+import type { DiagnosisRecord, DiagnosisTask, LeafHsiDiagnosisResult, StationAlertStatus } from '@smart-rice-security/shared'
 import { createCameraSession } from '../lib/inspection-camera'
 import type { CameraStatus } from '../lib/inspection-camera'
 import { useAuth } from '../auth/useAuth.ts'
@@ -40,7 +40,10 @@ import {
   stationVisualLevel,
 } from '../lib/station-alerts.ts'
 import { useStationAlerts } from './useStationAlerts.ts'
+import { buildHyperspectralReading, type HyperspectralPrediction } from '../lib/hyperspectral.ts'
 import './FieldInspection.css'
+
+type InspectionUploadTask = DiagnosisTask | 'leaf-hsi'
 
 type InspectionStation = {
   id: string
@@ -65,6 +68,7 @@ const INSPECTION_STATIONS: InspectionStation[] = [
 
 const LIVE_STATION_ID = 'S01'
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp'
+const HSI_ACCEPT = '.h5,.hdf5,.zip,.npy,.npz,.hdr,application/x-hdf5,application/octet-stream'
 const SNAPSHOT_INTERVAL_MS = 1000
 const DEFAULT_SCAN_RANGE = '192.168.1.0/24'
 
@@ -82,31 +86,52 @@ function scanPhaseText(progress: ScanProgress) {
   return '整理结果'
 }
 
-function riceLeafReflectance(wavelengthNm: number) {
-  if (wavelengthNm < 500) return 0.05 + 0.04 * ((wavelengthNm - 400) / 100)
-  if (wavelengthNm < 580) return 0.09 + 0.13 * Math.sin(((wavelengthNm - 500) / 80) * Math.PI)
-  if (wavelengthNm < 700) return 0.18 - 0.12 * ((wavelengthNm - 580) / 120)
-  if (wavelengthNm < 760) return 0.06 + 0.46 * ((wavelengthNm - 700) / 60)
-  return 0.5 + 0.05 * Math.sin(((wavelengthNm - 760) / 240) * Math.PI)
+function hsiCardCopy(
+  prediction: HyperspectralPrediction | null,
+  uploading: boolean,
+  error: string | null,
+  online: boolean,
+  hint: string | null,
+) {
+  if (!online) {
+    return { badge: '离线', title: '站点离线', detail: '仅在线站点可上传立方体', percent: 0, action: '离线' }
+  }
+  if (uploading) {
+    return { badge: '识别中', title: '立方体解析中…', detail: '正在提交高光谱 1D-CNN', percent: 42, action: '识别中' }
+  }
+  if (error) {
+    return { badge: '失败', title: '识别失败', detail: error, percent: 0, action: '重试' }
+  }
+  if (prediction?.labelZh || prediction?.label) {
+    const label = prediction.labelZh || prediction.label || '已识别'
+    const confidence = prediction.confidence == null ? 0 : Math.round((prediction.confidence <= 1 ? prediction.confidence * 100 : prediction.confidence) * 10) / 10
+    const detail = hint ? `点击光环可重新上传 · ${hint}` : '点击光环可重新上传立方体'
+    return {
+      badge: prediction.hasDamage ? '光谱预警' : '光谱正常',
+      title: label,
+      detail,
+      percent: confidence,
+      action: '再测',
+    }
+  }
+  return {
+    badge: 'CORE',
+    title: '上传高光谱立方体',
+    detail: hint ?? 'VIS–NIR · 400–1000 nm · 项目核心识别',
+    percent: 0,
+    action: '上传',
+  }
 }
 
-function buildHyperspectralReading(online: boolean) {
-  const bandCount = 36
-  const startNm = 400
-  const endNm = 1000
-  const points = Array.from({ length: bandCount }, (_, index) => {
-    const wavelengthNm = startNm + (index / (bandCount - 1)) * (endNm - startNm)
-    const reflectance = online ? riceLeafReflectance(wavelengthNm) : 0.08
-    const x = (index / (bandCount - 1)) * 240
-    const y = 36 - reflectance * 52
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  })
+function toHsiPrediction(record: DiagnosisRecord): HyperspectralPrediction {
+  const result = record.result as LeafHsiDiagnosisResult
   return {
-    polyline: points.join(' '),
-    label: online ? '未见光谱胁迫' : '暂无高光谱立方体',
-    detail: online ? '128 波段 · 400–1000 nm · 红边正常 · 置信度 93.7%' : '等待站点重新上线',
-    confidence: online ? 93.7 : 0,
-    ariaLabel: online ? '高光谱反射率曲线，红边抬升正常' : '高光谱设备离线',
+    label: result.label ?? record.label,
+    labelZh: result.label_zh ?? record.labelZh,
+    confidence: result.confidence ?? record.confidence,
+    severity: result.severity,
+    hasDamage: result.has_leaf_damage,
+    spectrum: result.spectrum,
   }
 }
 
@@ -182,11 +207,14 @@ export function FieldInspection() {
   const [connectionMessage, setCameraMessage] = useState('正在连接摄像头…')
   const [videoSize, setVideoSize] = useState('— × —')
   const [now, setNow] = useState(() => new Date())
-  const [uploading, setUploading] = useState<DiagnosisTask | null>(null)
+  const [uploading, setUploading] = useState<InspectionUploadTask | null>(null)
   const [leafError, setLeafError] = useState<string | null>(null)
   const [pestError, setPestError] = useState<string | null>(null)
+  const [hsiError, setHsiError] = useState<string | null>(null)
   const [leafHint, setLeafHint] = useState<string | null>(null)
   const [pestHint, setPestHint] = useState<string | null>(null)
+  const [hsiHint, setHsiHint] = useState<string | null>(null)
+  const [hsiPrediction, setHsiPrediction] = useState<HyperspectralPrediction | null>(null)
   const [capture, setCapture] = useState<{ file: File, previewUrl: string } | null>(null)
   const [captureError, setCaptureError] = useState<string | null>(null)
   const [flashing, setFlashing] = useState(false)
@@ -215,6 +243,7 @@ export function FieldInspection() {
   const sessionRef = useRef<ReturnType<typeof createCameraSession> | null>(null)
   const leafInputRef = useRef<HTMLInputElement>(null)
   const pestInputRef = useRef<HTMLInputElement>(null)
+  const hsiInputRef = useRef<HTMLInputElement>(null)
   const camerasRef = useRef(networkCameras)
   const preferredDeviceRef = useRef('')
   const scanRef = useRef<AbortController | null>(null)
@@ -257,7 +286,9 @@ export function FieldInspection() {
     : liveFeed ? selectedDeviceId : String(offlineCameraIndex)
   const leafCopy = leafCardCopy(alert, uploading === 'leaf', leafError, stationOnline, leafHint)
   const pestCopy = pestCardCopy(alert, uploading === 'pest', pestError, stationOnline, pestHint)
-  const hyperspectral = buildHyperspectralReading(stationOnline)
+  const hsiCopy = hsiCardCopy(hsiPrediction, uploading === 'leaf-hsi', hsiError, stationOnline, hsiHint)
+  const hyperspectral = buildHyperspectralReading(stationOnline, hsiPrediction)
+  const hsiLevel = hsiPrediction?.hasDamage ? 'attention' : recognitionCardLevel(stationOnline, undefined)
   const canCapture = canCaptureMonitor(stationOnline, cameraStatus === 'live', uploading !== null)
   // HTTPS 页面会拦截所有 http:// 摄像头地址，扫描前先给出提示。
   const insecurePage = mixedContentWarning(window.location.protocol, 'http://')
@@ -470,23 +501,28 @@ export function FieldInspection() {
     }
   }
 
-  async function upload(task: DiagnosisTask, file: File) {
+  async function upload(task: InspectionUploadTask, file: File) {
     if (!stationOnline) return false
     const form = new FormData()
     form.append('file', file)
     setUploading(task)
     setCaptureError(null)
     if (task === 'leaf') setLeafError(null)
-    else setPestError(null)
+    else if (task === 'pest') setPestError(null)
+    else setHsiError(null)
     try {
       const record = await auth.request<DiagnosisRecord>(`/api/diagnosis/${task}?stationId=${encodeURIComponent(stationId)}`, {
         method: 'POST',
         body: form,
       })
-      const hint = linkageHint(task, record.activatedDevice, record.deviceError,
+      const hint = linkageHint(task === 'pest' ? 'pest' : 'leaf', record.activatedDevice, record.deviceError,
         record.confirmationRequired, record.pendingConfirmationId, record.alertDeliveryStatus)
       if (task === 'leaf') setLeafHint(hint)
-      else setPestHint(hint)
+      else if (task === 'pest') setPestHint(hint)
+      else {
+        setHsiHint(hint)
+        setHsiPrediction(toHsiPrediction(record))
+      }
       emitStationAlertsChanged()
       emitDeviceStateChanged()
       await refresh()
@@ -494,8 +530,9 @@ export function FieldInspection() {
     } catch (error) {
       const message = describeError(error)
       if (task === 'leaf') setLeafError(message)
-      else setPestError(message)
-      setCaptureError(message)
+      else if (task === 'pest') setPestError(message)
+      else setHsiError(message)
+      if (task !== 'leaf-hsi') setCaptureError(message)
       return false
     } finally {
       setUploading(null)
@@ -543,7 +580,7 @@ export function FieldInspection() {
     if (ok) closeCapture()
   }
 
-  function onPick(task: DiagnosisTask, event: ChangeEvent<HTMLInputElement>) {
+  function onPick(task: InspectionUploadTask, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file || !stationOnline || uploading) return
@@ -860,7 +897,7 @@ export function FieldInspection() {
               <span>AI RECOGNITION MATRIX</span>
               <h2 id="recognition-title">智能识别分析</h2>
             </div>
-            <small>{stationOnline ? '可拍照后选择叶害 / 虫害，或点击卡片上传图片' : '站点离线，识别已关闭'}</small>
+            <small>{stationOnline ? '可拍照后选择叶害 / 虫害，或点击高光谱光环上传立方体' : '站点离线，识别已关闭'}</small>
           </header>
 
           <input
@@ -876,6 +913,13 @@ export function FieldInspection() {
             accept={IMAGE_ACCEPT}
             hidden
             onChange={(event) => onPick('pest', event)}
+          />
+          <input
+            ref={hsiInputRef}
+            type="file"
+            accept={HSI_ACCEPT}
+            hidden
+            onChange={(event) => onPick('leaf-hsi', event)}
           />
 
           <div className="recognition-list">
@@ -916,21 +960,40 @@ export function FieldInspection() {
               <p>{pestCopy.detail}</p>
             </button>
 
-            <article className={`recognition-card recognition-card--${stationLevel}`}>
-              <div className="recognition-card__title">
-                <div>
-                  <small>HYPERSPECTRAL</small>
-                  <h3>高光谱识别</h3>
+            <article className={`recognition-card recognition-card--hsi-core recognition-card--${hsiLevel}${uploading === 'leaf-hsi' ? ' is-busy' : ''}${stationOnline ? ' recognition-card--upload' : ''}`}>
+              <div className="hsi-core__copy">
+                <div className="recognition-card__title">
+                  <div>
+                    <small>CORE · HYPERSPECTRAL</small>
+                    <h3>高光谱识别</h3>
+                  </div>
+                  <span>{hsiCopy.badge}</span>
                 </div>
-                <span>SVM</span>
+                <strong>{hyperspectral.label}</strong>
+                <svg className="hyperspectral-curve" viewBox="0 0 240 40" role="img" aria-label={hyperspectral.ariaLabel}>
+                  <line x1="0" y1="20" x2="240" y2="20" />
+                  <polyline points={hyperspectral.polyline} />
+                </svg>
+                <div className="recognition-progress"><i style={{ width: `${hyperspectral.confidence}%` }} /></div>
+                <p>{hsiError ?? hyperspectral.detail}</p>
               </div>
-              <strong>{hyperspectral.label}</strong>
-              <svg className="hyperspectral-curve" viewBox="0 0 240 40" role="img" aria-label={hyperspectral.ariaLabel}>
-                <line x1="0" y1="20" x2="240" y2="20" />
-                <polyline points={hyperspectral.polyline} />
-              </svg>
-              <div className="recognition-progress"><i style={{ width: `${hyperspectral.confidence}%` }} /></div>
-              <p>{hyperspectral.detail}</p>
+              <button
+                type="button"
+                className={`hsi-upload-orb${uploading === 'leaf-hsi' ? ' is-busy' : ''}${hsiPrediction?.hasDamage ? ' is-warn' : hsiPrediction ? ' is-ready' : ''}`}
+                onClick={() => stationOnline && hsiInputRef.current?.click()}
+                disabled={!stationOnline || uploading !== null}
+                aria-label={stationOnline ? `高光谱${hsiCopy.action}` : '高光谱识别离线'}
+              >
+                <span className="hsi-upload-orb__halo" aria-hidden="true" />
+                <span className="hsi-upload-orb__wave" aria-hidden="true" />
+                <span className="hsi-upload-orb__wave hsi-upload-orb__wave--late" aria-hidden="true" />
+                <span className="hsi-upload-orb__spark" aria-hidden="true" />
+                <span className="hsi-upload-orb__ring" aria-hidden="true" />
+                <span className="hsi-upload-orb__core">
+                  <small>VIS–NIR</small>
+                  <strong>{hsiCopy.action}</strong>
+                </span>
+              </button>
             </article>
           </div>
         </section>

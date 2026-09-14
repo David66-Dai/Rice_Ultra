@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test:config": "node --experimental-strip-types --test config/shared-config.test.ts config/vite-config.test.ts",
     "test:devices": "node --experimental-strip-types --test tests/device-state.test.ts tests/device-sync.test.ts tests/auth-session.test.ts",
-    "test:alerts": "node --experimental-strip-types --test tests/station-alerts.test.ts",
+    "test:alerts": "node --experimental-strip-types --test tests/station-alerts.test.ts tests/hyperspectral.test.ts",
     "test:capture": "node --experimental-strip-types --test tests/camera-capture.test.ts",
     "test:network": "node --experimental-strip-types --test tests/network-camera.test.ts",
     "test:pest": "node --experimental-strip-types --test tests/pest-disease.test.ts",

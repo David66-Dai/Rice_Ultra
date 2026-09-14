@@ -39,17 +39,22 @@ public enum AlertLevel {
 	);
 
 	public static AlertLevel fromLeaf(String label, String labelZh, Boolean hasDamage) {
+		return leafDisease(label, labelZh, hasDamage) ? RED : GREEN;
+	}
+
+	public static AlertLevel fromLeafHsi(String label, String labelZh, Boolean hasDamage) {
+		return leafDisease(label, labelZh, hasDamage) ? YELLOW : GREEN;
+	}
+
+	private static boolean leafDisease(String label, String labelZh, Boolean hasDamage) {
 		String combined = ((label == null ? "" : label) + " " + (labelZh == null ? "" : labelZh))
 			.toLowerCase(Locale.ROOT);
 		for (String disease : LEAF_DISEASES) {
 			if (combined.contains(disease)) {
-				return RED;
+				return true;
 			}
 		}
-		if (Boolean.TRUE.equals(hasDamage)) {
-			return RED;
-		}
-		return GREEN;
+		return Boolean.TRUE.equals(hasDamage);
 	}
 
 	public static AlertLevel fromPest(int count) {

@@ -29,6 +29,11 @@ public class DiagnosisController {
 		return diagnoses.diagnose(stationId, "pest", file);
 	}
 
+	@PostMapping(value = "/leaf-hsi", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public DiagnosisResponse leafHsi(@RequestParam String stationId, @RequestPart("file") MultipartFile file) {
+		return diagnoses.diagnose(stationId, "leaf-hsi", file);
+	}
+
 	@GetMapping("/stations")
 	public StationAlertListResponse stations() {
 		return diagnoses.stationAlerts();

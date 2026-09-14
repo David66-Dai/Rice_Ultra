@@ -197,6 +197,25 @@ export type PestDiagnosisResult = {
 };
 
 export type StationAlertLevel = "green" | "yellow" | "red";
+
+export type LeafHsiDiagnosisResult = {
+  task: "leaf-hsi";
+  filename?: string | null;
+  label: string;
+  label_zh?: string;
+  confidence: number;
+  has_leaf_damage?: boolean;
+  severity?: number;
+  alert_level?: StationAlertLevel;
+  all_probabilities?: Record<string, number>;
+  spectrum?: {
+    wavelengths?: number[];
+    reflectance?: number[];
+    ndvi?: number;
+    ndre?: number;
+  };
+};
+
 export type DiagnosisTask = "leaf" | "pest";
 
 export type DiagnosisRecord = {
@@ -211,7 +230,7 @@ export type DiagnosisRecord = {
   alertLevel: StationAlertLevel;
   stationAlertLevel: StationAlertLevel;
   createdAt: string;
-  result: LeafDiagnosisResult | PestDiagnosisResult;
+  result: LeafDiagnosisResult | PestDiagnosisResult | LeafHsiDiagnosisResult;
   activatedDevice?: "pump" | "lamp" | null;
   deviceError?: string | null;
   confirmationRequired?: boolean;

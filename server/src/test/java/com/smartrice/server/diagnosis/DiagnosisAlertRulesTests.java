@@ -16,6 +16,13 @@ class DiagnosisAlertRulesTests {
 	}
 
 	@Test
+	void hyperspectralDiseasesAreYellowOnly() {
+		assertThat(AlertLevel.fromLeafHsi("Brown Spot", "褐斑病", true)).isEqualTo(AlertLevel.YELLOW);
+		assertThat(AlertLevel.fromLeafHsi("Bacterial Leaf Blight", "细菌性叶枯病", true)).isEqualTo(AlertLevel.YELLOW);
+		assertThat(AlertLevel.fromLeafHsi("Healthy Leaf", "健康叶片", false)).isEqualTo(AlertLevel.GREEN);
+	}
+
+	@Test
 	void pestCountMapsToGreenYellowRed() {
 		assertThat(AlertLevel.fromPest(0)).isEqualTo(AlertLevel.GREEN);
 		assertThat(AlertLevel.fromPest(1)).isEqualTo(AlertLevel.YELLOW);

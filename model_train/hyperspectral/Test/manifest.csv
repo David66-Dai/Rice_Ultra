@@ -1,0 +1,5 @@
+﻿file,class_name,class_name_zh,variety,growth_stage,severity,h5,envi
+01_Healthy_Leaf,Healthy Leaf,健康叶片,indica,tillering,0,01_Healthy_Leaf.h5,01_Healthy_Leaf.hdr
+02_Bacterial_Leaf_Blight,Bacterial Leaf Blight,细菌性叶枯病,indica,tillering,2,02_Bacterial_Leaf_Blight.h5,02_Bacterial_Leaf_Blight.hdr
+03_Brown_Spot,Brown Spot,褐斑病,indica,tillering,2,03_Brown_Spot.h5,03_Brown_Spot.hdr
+04_Tungro_Virus,Tungro Virus,东格鲁病毒,indica,tillering,2,04_Tungro_Virus.h5,04_Tungro_Virus.hdr
