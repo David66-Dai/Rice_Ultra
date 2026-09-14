@@ -15,6 +15,7 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import java.time.Duration;
 
 /** Explicit opt-in; writes only a random test device namespace, removed in finally. No serial access. */
@@ -43,7 +44,8 @@ class RedisSensorLiveTests {
 		try {
 			var json = new ObjectMapper();
 			var ingestion = new RealtimeSensorIngestionService(mock(RealtimeSensorReadingRepository.class),
-				mock(RedisPendingSampleRepository.class), json, true, device);
+				mock(RedisPendingSampleRepository.class), json, true, device,
+				mock(ApplicationEventPublisher.class));
 			var publisher = new RedisSensorPublisher(mock(RedisPendingSampleRepository.class), redis, 30);
 			var reading = RedisSensorTests.reading();
 			reading.sampledAt = Instant.now();

@@ -14,6 +14,12 @@ import {
   initialHistoryState,
   isArchiveNumber,
 } from '../lib/history.ts'
+import {
+  PEST_ALERT_LABELS,
+  pestDiseaseOverallLevel,
+  pestDiseaseSourceLabel,
+  resolvePestDisease,
+} from '../lib/pest-disease.ts'
 import './HistoryTrace.css'
 
 type MetricDefinition = {
@@ -109,10 +115,16 @@ export function HistoryTrace() {
       }
     })
   }, [daily])
-  const pestDisease = daily?.current.pestDisease
+  // The current field day comes from the inspection records; earlier days are filled in locally.
+  const pestDisease = useMemo(
+    () => resolvePestDisease(daily?.current.pestDisease, selectedStationId, selectedValue),
+    [daily, selectedStationId, selectedValue],
+  )
+  const pestLevel = pestDiseaseOverallLevel(pestDisease)
+  const pestDiseases = pestDisease?.items.filter(item => item.category === 'disease') ?? []
+  const pestInsects = pestDisease?.items.filter(item => item.category === 'pest') ?? []
   const spectrum = daily?.current.spectrum
   const spectralPlot = historySpectrumPlot(spectrum?.reflectancePercent)
-  const hasPestArchive = Boolean(pestDisease && Object.values(pestDisease).some(isArchiveNumber))
   const hasSpectrumArchive = Boolean(spectrum && (
     [spectrum.ndvi, spectrum.ndre, spectrum.gndvi, spectrum.chlorophyllSpad].some(isArchiveNumber) || spectralPlot.points.length
   ))
@@ -313,28 +325,47 @@ export function HistoryTrace() {
               <article className="history-special__card history-special__card--pest">
                 <header>
                   <div>
-                    <small>PEST & DISEASE ARCHIVE</small>
+                    <small>PEST & DISEASE</small>
                     <h3>病虫害监测数据</h3>
                   </div>
-                  <span>{!hasPestArchive ? '暂无归档' : !isArchiveNumber(pestDisease?.riskIndex) ? '暂无风险指数' : pestDisease.riskIndex < 12 ? '低风险' : '需关注'}</span>
+                  <span className={`pest-level pest-level--${pestLevel}`}>
+                    <i aria-hidden="true" />{pestDisease?.available ? PEST_ALERT_LABELS[pestLevel] : '暂无数据'}
+                  </span>
                 </header>
-                {hasPestArchive && pestDisease ? <div className="pest-data">
-                  <div className="pest-data__result">
-                    <span className="pest-data__radar" aria-hidden="true"><i /></span>
-                    <div>
-                      <small>AI 识别结论</small>
-                      <strong>{!isArchiveNumber(pestDisease.diseaseCount) ? '暂无病害识别归档' : pestDisease.diseaseCount === 0 ? '未检出明显病害' : `发现 ${pestDisease.diseaseCount} 处疑似病斑`}</strong>
-                      <p>识别置信度 {formatArchiveNumber(pestDisease.recognitionConfidencePercent, 1)}%</p>
-                    </div>
-                  </div>
-                  <dl>
-                    <div><dt>疑似病斑</dt><dd>{formatArchiveNumber(pestDisease.diseaseCount, 0)}<small>处</small></dd></div>
-                    <div><dt>虫口密度</dt><dd>{formatArchiveNumber(pestDisease.pestDensityPer100Plants, 1)}<small>头/百株</small></dd></div>
-                    <div><dt>受害面积</dt><dd>{formatArchiveNumber(pestDisease.affectedAreaPercent, 1)}<small>%</small></dd></div>
-                    <div><dt>风险指数</dt><dd>{formatArchiveNumber(pestDisease.riskIndex, 1)}<small>/100</small></dd></div>
-                  </dl>
+                {pestDisease ? <div className="pest-board">
+                  <p className="pest-board__source">
+                    <span>{pestDiseaseSourceLabel(pestDisease)}</span>
+                    {pestDisease.available && <small>共 {pestDisease.recognitionCount} 次识别</small>}
+                  </p>
+                  {[
+                    { key: 'disease', title: '病害', hint: '当日识别次数', rows: pestDiseases },
+                    { key: 'pest', title: '虫害', hint: '当日检出只数', rows: pestInsects },
+                  ].map((group) => (
+                    <section key={group.key} className="pest-group">
+                      <h4>{group.title}<small>{group.hint}</small></h4>
+                      <ul>
+                        {group.rows.map((item) => (
+                          <li key={item.key} className={`pest-row pest-row--${item.alertLevel}`}>
+                            <i aria-hidden="true" />
+                            <span className="pest-row__label">{item.label}</span>
+                            <strong>
+                              {item.value === null ? '—' : item.value}
+                              {item.value !== null && <small>{item.unit}</small>}
+                            </strong>
+                            <em aria-label={`${item.label}告警等级`}>{PEST_ALERT_LABELS[item.alertLevel]}</em>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                  {pestDisease.notes.length > 0 && (
+                    <details className="pest-board__notes">
+                      <summary>数据说明</summary>
+                      <ul>{pestDisease.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
+                    </details>
+                  )}
                 </div> : <div className="history-special__empty" role="status">
-                  <strong>暂无病虫害归档</strong>
+                  <strong>暂无病虫害数据</strong>
                   <p>该日未提供病虫害监测记录</p>
                 </div>}
               </article>

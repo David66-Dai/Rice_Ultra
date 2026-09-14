@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,8 @@ class RedisSensorTests {
 		var readings = mock(RealtimeSensorReadingRepository.class);
 		var pending = mock(RedisPendingSampleRepository.class);
 		var json = new ObjectMapper();
-		var service = new RealtimeSensorIngestionService(readings, pending, json, true, "environment_platform_01");
+		var service = new RealtimeSensorIngestionService(readings, pending, json, true,
+			"environment_platform_01", mock(ApplicationEventPublisher.class));
 		var reading = reading();
 		service.save(reading);
 		verify(readings).save(reading);
@@ -39,7 +41,8 @@ class RedisSensorTests {
 	@Test void disabledRedisKeepsOnlyMysqlPersistence() {
 		var readings = mock(RealtimeSensorReadingRepository.class);
 		var pending = mock(RedisPendingSampleRepository.class);
-		new RealtimeSensorIngestionService(readings, pending, new ObjectMapper(), false, "device").save(reading());
+		new RealtimeSensorIngestionService(readings, pending, new ObjectMapper(), false, "device",
+			mock(ApplicationEventPublisher.class)).save(reading());
 		verify(readings).save(any());
 		verifyNoInteractions(pending);
 	}

@@ -3,6 +3,7 @@ import type { AiAnalysisRequest, AiGrowthStage, AiWindowDays } from '@smart-rice
 import { useAuth } from '../auth/useAuth.ts'
 import { describeError } from '../lib/api.ts'
 import { canStartDecision, createDecisionSession, formatEvidenceNumber, formatReportTime, initialDecisionState, isDecisionBusy, isReportExpired } from '../lib/decision.ts'
+import { PEST_ALERT_LABELS, pestDiseaseOverallLevel, pestDiseaseSourceLabel, resolvePestDisease } from '../lib/pest-disease.ts'
 import './DecisionSimulation.css'
 
 const STATIONS = Array.from({ length: 10 }, (_, index) => `S${String(index + 1).padStart(2, '0')}`)
@@ -47,12 +48,18 @@ export function DecisionSimulation() {
   const result = state.analysisPhase === 'succeeded' ? job?.result : null
   const evidence = state.viewingSavedReport && result ? result.evidence : state.evidence
   const legacy = evidence?.legacyContext
+  // The current field day comes from the inspection records; earlier days are filled in locally.
+  const pestDisease = resolvePestDisease(legacy?.pestDisease, evidence?.stationId ?? selection.stationId,
+    evidence?.endDate ?? selection.date)
+  const pestLevel = pestDiseaseOverallLevel(pestDisease)
+  const stageFromArchive = evidence?.growthStageSource === 'hive'
   const busy = isDecisionBusy(state)
   const expired = isReportExpired(job)
   const select = (patch: Partial<AiAnalysisRequest>) => {
     void session.current?.load({ ...selection, ...patch })
   }
-  const stageLabel = STAGES.find(stage => stage.value === selection.growthStage)?.label ?? '未知 / 未提供'
+  const stageLabel = evidence?.growthStageLabel
+    ?? STAGES.find(stage => stage.value === (evidence?.growthStage ?? selection.growthStage))?.label ?? '未知 / 未提供'
   const statusLabel = state.analysisPhase === 'submitting' ? '正在提交'
     : state.analysisPhase === 'loading_report' ? '正在读取报告'
     : state.analysisPhase === 'polling' ? job?.status === 'queued' ? '排队中' : '分析中'
@@ -92,18 +99,23 @@ export function DecisionSimulation() {
             <div>{([7, 14, 30] as AiWindowDays[]).map(days => <button key={days} type="button"
               aria-pressed={selection.windowDays === days} onClick={() => select({ windowDays: days })}>{days}<small> 天</small></button>)}</div>
           </fieldset>
-          <label className="decision-field"><span>生育期 <small>手动补充</small></span>
-            <select value={selection.growthStage} onChange={event => select({ growthStage: event.target.value as AiGrowthStage })}>
-              {STAGES.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
-            </select>
-          </label>
+          {stageFromArchive
+            ? <div className="decision-field decision-field--static"><span>生长周期 <small>数据表读取</small></span>
+                <strong>{evidence?.growthStageLabel}</strong>
+              </div>
+            : <label className="decision-field"><span>生长周期 <small>{state.loading ? '读取中' : '表内缺失，手动补充'}</small></span>
+                <select value={selection.growthStage} onChange={event => select({ growthStage: event.target.value as AiGrowthStage })}>
+                  {STAGES.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
+                </select>
+              </label>}
           <button type="button" className="decision-run" disabled={!canStartDecision(state)} onClick={() => void session.current?.start()}>
             <span aria-hidden="true">{busy ? '◌' : '↗'}</span>{busy ? statusLabel : expired ? '重新生成报告' : state.analysisPhase === 'failed' && !state.viewingSavedReport ? '手动重试分析' : result ? '重新分析' : '开始分析'}
           </button>
         </div>
         <div className="decision-filter-note">
           <span>{range ? `可用历史：${range.startDate} — ${range.endDate}` : state.loading ? '正在读取历史范围' : '暂无可用历史范围'}</span>
-          <span>生育期由你提供；每次分析使用所选窗口的监测证据。</span>
+          <span>{stageFromArchive ? '生长周期读取自 farm.env_daily；每次分析使用所选窗口的监测证据。'
+            : '该日数据表没有生长周期，请手动补充；每次分析使用所选窗口的监测证据。'}</span>
         </div>
         {state.configured === false && <div className="decision-notice" role="status">
           <span>分析与报告归档服务尚未就绪，请联系管理员完成配置。监测证据仍可查看。</span>
@@ -119,13 +131,25 @@ export function DecisionSimulation() {
         <header><h3 id="decision-legacy-title">病虫害 / 产量参考</h3></header>
         <div className="decision-legacy-grid">
           <article className="decision-panel decision-legacy-card">
-            <header><h4>病虫害归档</h4><span>{legacy?.disease.available ? legacy.disease.referenceDate : '暂无可用归档'}</span></header>
-            {legacy?.disease.available ? <>
-              <div className="decision-legacy-values">{legacy.disease.values.map(metric => <div key={metric.field}>
-                <span>{metric.label}</span><strong>{metric.value ?? '—'}<small>{metric.unit}</small></strong>
-              </div>)}</div>
-              <p>{legacy.disease.matchType === 'latest_prior' ? '采用目标日期之前最近一次病虫害记录。' : '采用目标日期的病虫害记录。'}</p>
-            </> : <p>当前没有可用的旧项目病虫害参考，环境分析仍可继续。</p>}
+            <header><h4>病虫害</h4>
+              <span className={`decision-pest-level decision-pest-level--${pestLevel}`}>
+                <i aria-hidden="true" />{pestDisease?.available ? PEST_ALERT_LABELS[pestLevel] : '暂无数据'}
+              </span>
+            </header>
+            {pestDisease ? <>
+              <p className="decision-pest-source">
+                <span>{pestDisease.referenceDate} · {pestDiseaseSourceLabel(pestDisease)}</span>
+                {pestDisease.available && <small>共 {pestDisease.recognitionCount} 次识别</small>}
+              </p>
+              <ul className="decision-pest-list">{pestDisease.items.map(item => (
+                <li key={item.key} className={`decision-pest-row decision-pest-row--${item.alertLevel}`}>
+                  <i aria-hidden="true" />
+                  <span>{item.label}</span>
+                  <strong>{item.value === null ? '—' : item.value}{item.value !== null && <small>{item.unit}</small>}</strong>
+                </li>
+              ))}</ul>
+              <p>病害按当日识别次数计，虫害按当日检出只数计；0 为绿色，虫害 1 只为黄色、2 只及以上为红色，病害检出即为红色。</p>
+            </> : <p>当前没有可用的病虫害数据，环境分析仍可继续。</p>}
           </article>
           <article className="decision-panel decision-legacy-card decision-legacy-card--yield">
             <header><h4>年度产量基线</h4><span>{legacy?.yield.available ? `${legacy.yield.referenceYear ?? '—'} 年 · ${legacy.yield.season === 'firstcrop' ? '第一季' : legacy.yield.season || '季节未标注'}` : '暂无可用归档'}</span></header>
@@ -167,7 +191,10 @@ export function DecisionSimulation() {
               </table>
             </div>
             <div className="decision-evidence-foot">
-              <p>生育期：<strong>{stageLabel}</strong>{selection.growthStage === 'unknown' ? ' · 未提供，不推定当前阶段' : ' · 用户提供'}</p>
+              <p>生长周期：<strong>{stageLabel}</strong>{
+                evidence.growthStageSource === 'hive' ? ' · 读取自 farm.env_daily'
+                  : evidence.growthStageSource === 'user' ? ' · 数据表缺失，用户补充'
+                    : ' · 数据表与用户均未提供，不推定当前阶段'}</p>
               <p>“—”表示无有效数值；指标变化保留原单位。</p>
               {evidence.missingDates.length > 0 && <details><summary>查看缺测日期（{evidence.missingDates.length} 天）</summary><p>{evidence.missingDates.join('、')}</p></details>}
               {evidence.limitations.length > 0 && <details open><summary>数据说明</summary><ul>{evidence.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul></details>}

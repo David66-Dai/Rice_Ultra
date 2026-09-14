@@ -59,7 +59,7 @@ class AiEvidenceServiceTests {
 	void missingBoundaryIsNotReplacedByFirstAvailableObservation() throws Exception {
 		var repository = mock(HiveAiRepository.class);
 		when(repository.window("point_1", END.minusDays(13), END)).thenReturn(new HiveAiRepository.WindowRows(2,
-			Map.of(END.minusDays(1), Map.of("light_lux", 1.0, "ph", 6.0), END, Map.of("light_lux", 2.0))));
+			Map.of(END.minusDays(1), Map.of("light_lux", 1.0, "ph", 6.0), END, Map.of("light_lux", 2.0)), Map.of()));
 		var result = new AiEvidenceService(repository, CLOCK).evidence("S01", END, 14, "HEADING");
 		assertThat(metric(result, "light_lux").first()).isNull();
 		assertThat(metric(result, "light_lux").last()).isEqualTo(2.0);
@@ -69,18 +69,20 @@ class AiEvidenceServiceTests {
 		assertThat(metric(result, "ph").count()).isEqualTo(1);
 		assertThat(metric(result, "ph").missingCount()).isEqualTo(13);
 		assertThat(result.growthStage()).isEqualTo("heading");
-		assertThat(result.limitations()).anyMatch(text -> text.contains("用户选择"));
+		assertThat(result.growthStageSource()).isEqualTo("user");
+		assertThat(result.growthStageLabel()).isEqualTo("抽穗期");
+		assertThat(result.limitations()).anyMatch(text -> text.contains("用户补充"));
 	}
 
 	@Test
 	void rejectsMissingTargetAndAllInvalidTargetEvenWhenEarlierDaysHaveData() throws Exception {
 		var repository = mock(HiveAiRepository.class);
 		when(repository.window(anyString(), any(), any())).thenReturn(new HiveAiRepository.WindowRows(1,
-			Map.of(END.minusDays(1), Map.of("light_lux", 100.0))));
+			Map.of(END.minusDays(1), Map.of("light_lux", 100.0)), Map.of()));
 		var service = new AiEvidenceService(repository, CLOCK);
 		assertStatus(() -> service.evidence("S01", END, 7, null), 404);
 		when(repository.window(anyString(), any(), any())).thenReturn(new HiveAiRepository.WindowRows(2,
-			Map.of(END.minusDays(1), Map.of("light_lux", 100.0), END, Map.of("light_lux", Double.NaN))));
+			Map.of(END.minusDays(1), Map.of("light_lux", 100.0), END, Map.of("light_lux", Double.NaN)), Map.of()));
 		assertStatus(() -> service.evidence("S01", END, 7, null), 422);
 	}
 
@@ -104,12 +106,49 @@ class AiEvidenceServiceTests {
 		LocalDate beijingToday = END.plusDays(1);
 		var repository = mock(HiveAiRepository.class);
 		when(repository.window("point_10", beijingToday.minusDays(29), beijingToday))
-			.thenReturn(new HiveAiRepository.WindowRows(1, Map.of(beijingToday, Map.of("wind_speed_m_s", 0.0))));
+			.thenReturn(new HiveAiRepository.WindowRows(1,
+				Map.of(beijingToday, Map.of("wind_speed_m_s", 0.0)), Map.of()));
 		var result = new AiEvidenceService(repository, CLOCK).evidence("s10", beijingToday, 30, null);
 		assertThat(result.windowDays()).isEqualTo(30);
 		assertThat(result.growthStage()).isEqualTo("unknown");
-		assertThat(result.limitations()).anyMatch(text -> text.contains("生育期未知"));
+		assertThat(result.growthStageSource()).isEqualTo("unknown");
+		assertThat(result.growthStageLabel()).isNull();
+		assertThat(result.limitations()).anyMatch(text -> text.contains("生长周期未知"));
 		verify(repository).window("point_10", beijingToday.minusDays(29), beijingToday);
+	}
+
+	@Test
+	void archivedGrowthStageWinsOverTheOperatorChoiceAndIsReportedAsComingFromHive() throws Exception {
+		var repository = mock(HiveAiRepository.class);
+		when(repository.window("point_1", END.minusDays(6), END)).thenReturn(new HiveAiRepository.WindowRows(1,
+			Map.of(END, Map.of("light_lux", 100.0)), Map.of(END, "分蘖期", END.minusDays(1), "育秧期")));
+		// The operator asked for 成熟期; the table recorded 分蘖期 for the target day and must win.
+		var result = new AiEvidenceService(repository, CLOCK).evidence("S01", END, 7, "mature");
+		assertThat(result.growthStage()).isEqualTo("tillering");
+		assertThat(result.growthStageLabel()).isEqualTo("分蘖期");
+		assertThat(result.growthStageSource()).isEqualTo("hive");
+		assertThat(result.limitations()).anyMatch(text -> text.contains("读取自") && text.contains("分蘖期"));
+	}
+
+	@Test
+	void stageOfAnotherDayIsNeverBorrowedForTheTargetDay() throws Exception {
+		var repository = mock(HiveAiRepository.class);
+		when(repository.window("point_1", END.minusDays(6), END)).thenReturn(new HiveAiRepository.WindowRows(1,
+			Map.of(END, Map.of("light_lux", 100.0)), Map.of(END.minusDays(1), "育秧期")));
+		var result = new AiEvidenceService(repository, CLOCK).evidence("S01", END, 7, null);
+		assertThat(result.growthStage()).isEqualTo("unknown");
+		assertThat(result.growthStageSource()).isEqualTo("unknown");
+	}
+
+	@Test
+	void unrecognisedArchivedStageFallsBackToTheOperatorValueAndSaysSo() throws Exception {
+		var repository = mock(HiveAiRepository.class);
+		when(repository.window("point_1", END.minusDays(6), END)).thenReturn(new HiveAiRepository.WindowRows(1,
+			Map.of(END, Map.of("light_lux", 100.0)), Map.of(END, "早稻拔节孕穗期")));
+		var result = new AiEvidenceService(repository, CLOCK).evidence("S01", END, 7, "booting");
+		assertThat(result.growthStage()).isEqualTo("booting");
+		assertThat(result.growthStageSource()).isEqualTo("user");
+		assertThat(result.limitations()).anyMatch(text -> text.contains("不在已知生长周期名单内"));
 	}
 
 	@Test
@@ -117,8 +156,8 @@ class AiEvidenceServiceTests {
 		var repository = mock(HiveAiRepository.class);
 		var legacy = mock(HiveLegacyAiRepository.class);
 		when(repository.window(anyString(), any(), any())).thenReturn(new HiveAiRepository.WindowRows(1,
-			Map.of(END, Map.of("light_lux", 100.0))));
-		var service = new AiEvidenceService(repository, legacy, CLOCK);
+			Map.of(END, Map.of("light_lux", 100.0)), Map.of()));
+		var service = new AiEvidenceService(repository, legacy, null, CLOCK);
 		Thread.currentThread().interrupt();
 		try {
 			assertStatus(() -> service.evidence("S01", END, 7, null), 503);

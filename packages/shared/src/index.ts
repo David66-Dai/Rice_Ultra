@@ -21,12 +21,35 @@ export type HistoryEnvironmentAverages = {
   soilEcMsCm: number | null;
 };
 
-export type HistoryPestDiseaseArchive = {
-  diseaseCount: number | null;
-  pestDensityPer100Plants: number | null;
-  affectedAreaPercent: number | null;
-  riskIndex: number | null;
-  recognitionConfidencePercent: number | null;
+/** Fixed catalogue of three diseases and three pests; see PEST_DISEASE_CATALOG on the web client. */
+export type PestDiseaseCategory = "disease" | "pest";
+export type PestDiseaseAlertLevel = "green" | "yellow" | "red";
+
+export type PestDiseaseItem = {
+  key: string;
+  category: PestDiseaseCategory;
+  label: string;
+  /** 次 for a disease (recognitions that day), 只 for a pest (insects detected). */
+  unit: string;
+  value: number | null;
+  alertLevel: PestDiseaseAlertLevel;
+};
+
+/**
+ * One day of pest and disease figures. `source` is "inspection_diagnosis" for the current field day,
+ * "none" for any earlier day the backend has no records for, and "mock" once the web client has
+ * filled an earlier day in from its own sample data.
+ */
+export type PestDiseaseSummary = {
+  available: boolean;
+  source: string;
+  sourceTable: string;
+  stationId: string;
+  referenceDate: string;
+  lastDiagnosedAt: string | null;
+  recognitionCount: number;
+  items: PestDiseaseItem[];
+  notes: string[];
 };
 
 export type HistorySpectralArchive = {
@@ -41,7 +64,7 @@ export type HistoryDayData = {
   date: string;
   stationId: string;
   environment: HistoryEnvironmentAverages;
-  pestDisease: HistoryPestDiseaseArchive | null;
+  pestDisease: PestDiseaseSummary | null;
   spectrum: HistorySpectralArchive | null;
   source?: "hive";
 };
@@ -111,6 +134,22 @@ export type DeviceState = {
   updatedBy: string | null;
 };
 
+export type PreventionPolicyState = {
+  requireAstrBotConfirmation: boolean;
+  revision: number;
+  updatedAt: string;
+  updatedBy: string | null;
+  spraySafetyEnabled: boolean;
+  maxSprayWindSpeedMs: number;
+  sensorMaxAgeSeconds: number;
+  leafEvidenceMaxAgeSeconds: number;
+};
+
+export type PreventionPolicyUpdateRequest = {
+  requireAstrBotConfirmation: boolean;
+  expectedRevision: number;
+};
+
 export type PlatformNotification = {
   id: number;
   type: "device_control" | "pest_disease";
@@ -128,6 +167,7 @@ export type DeviceSyncResponse = {
   canControl: boolean;
   available: boolean;
   devices: DeviceState[];
+  preventionPolicy: PreventionPolicyState;
   notifications: PlatformNotification[];
   unreadCount: number;
 };
@@ -174,6 +214,9 @@ export type DiagnosisRecord = {
   result: LeafDiagnosisResult | PestDiagnosisResult;
   activatedDevice?: "pump" | "lamp" | null;
   deviceError?: string | null;
+  confirmationRequired?: boolean;
+  pendingConfirmationId?: string | null;
+  alertDeliveryStatus?: "PENDING" | "SENT" | "FAILED" | null;
 };
 
 export type StationAlertStatus = {
@@ -275,7 +318,10 @@ export type AiEvidence = {
   rawRowCount: number;
   metrics: AiEvidenceMetric[];
   daily: { date: string; values: Record<string, number | null> }[];
+  /** Effective 生长周期; read from farm.env_daily when that day recorded one. */
   growthStage: string;
+  growthStageLabel: string | null;
+  growthStageSource: "hive" | "user" | "unknown";
   limitations: string[];
   legacyContext?: AiLegacyContext;
 };
@@ -307,15 +353,9 @@ export type AiAnalysisListResponse = AiAnalysisJob[];
 export type AiStatusResponse = { configured: boolean; storageConfigured?: boolean };
 
 export type AiLegacyContext = {
-  source: "hive_legacy";
+  source: string;
   stationId: string;
-  disease: {
-    available: boolean;
-    sourceTable: string;
-    referenceDate: string | null;
-    matchType: "exact" | "latest_prior" | "missing";
-    values: { field: string; label: string; unit: string; value: string | null }[];
-  };
+  pestDisease: PestDiseaseSummary;
   yield: {
     available: boolean;
     sourceTable: string;

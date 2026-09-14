@@ -25,8 +25,11 @@ CREATE TABLE IF NOT EXISTS platform_notification (
   actor_display_name VARCHAR(64) NULL,
   device VARCHAR(16) NULL,
   enabled BIT(1) NULL,
+  source_id BIGINT NULL,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE platform_notification ADD COLUMN IF NOT EXISTS source_id BIGINT NULL;
 
 CREATE TABLE IF NOT EXISTS notification_read_state (
   user_id BIGINT NOT NULL,
@@ -47,6 +50,36 @@ CREATE TABLE IF NOT EXISTS astrbot_scheduled_stop (
   fingerprint VARCHAR(64) NOT NULL,
   PRIMARY KEY (request_id),
   KEY idx_astrbot_stop_status_due (status, due_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS prevention_policy (
+  id INT NOT NULL,
+  require_astrbot_confirmation BIT(1) NOT NULL,
+  revision BIGINT NOT NULL DEFAULT 0,
+  updated_at DATETIME(6) NOT NULL,
+  updated_by VARCHAR(64) NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS astrbot_diagnosis_confirmation (
+  id VARCHAR(36) NOT NULL,
+  diagnosis_id BIGINT NOT NULL,
+  station_id VARCHAR(8) NOT NULL,
+  device VARCHAR(16) NOT NULL,
+  expected_revision BIGINT NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  delivery_status VARCHAR(24) NOT NULL,
+  alert_message VARCHAR(2000) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  due_at DATETIME(6) NOT NULL,
+  sent_at DATETIME(6) NULL,
+  confirmed_at DATETIME(6) NULL,
+  confirmed_by VARCHAR(64) NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(1000) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_astrbot_diagnosis_confirmation (diagnosis_id),
+  KEY idx_astrbot_diagnosis_pending (status, delivery_status, due_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS astrbot_scheduled_stop (

@@ -6,7 +6,6 @@ import com.smartrice.server.config.RiceConfiguration;
 import com.smartrice.server.hive.HiveConnectionFactory;
 import com.smartrice.server.hive.HiveProperties;
 import java.sql.SQLException;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -17,30 +16,30 @@ import org.springframework.boot.context.properties.bind.Binder;
 @EnabledIfEnvironmentVariable(named = "RICE_HIVE_AI_SCHEMA_LIVE_TEST", matches = "true")
 class HiveAiLegacySchemaLiveTests {
 	@Test
-	void nonPaddedDiseaseDatesAndPriorYearYieldRemainExplicitReferences() throws Exception {
+	void priorYearYieldRemainsAnExplicitReference() throws Exception {
 		var environment = RiceConfiguration.loadEnvironment();
 		HiveProperties properties = Binder.get(environment).bind("app.hive", HiveProperties.class)
 			.orElseThrow(() -> new IllegalArgumentException("未配置 Hive"));
 		try (var connections = new HiveConnectionFactory(properties)) {
 			var repository = new HiveLegacyAiRepository(connections);
-			var exact = repository.context("S01", "point_1", LocalDate.of(2020, 1, 1));
-			assertThat(exact.disease().available()).describedAs("non-padded legacy date must remain readable").isTrue();
-			assertThat(exact.disease().referenceDate()).isEqualTo(LocalDate.of(2020, 1, 1));
-			assertThat(exact.disease().matchType()).isEqualTo("exact");
-			assertThat(exact.yield().baselineKgPerMu()).isEqualTo(474.377677);
-			var recent = repository.context("S01", "point_1", LocalDate.of(2026, 9, 11));
-			assertThat(recent.yield().available()).isTrue();
-			assertThat(recent.yield().referenceYear()).isEqualTo(2025);
-			assertThat(recent.yield().matchType()).isEqualTo("latest_prior");
-			assertThat(recent.yield().baselineKgPerMu()).isEqualTo(465.474385);
-			assertThat(recent.disease().available()).isTrue();
-			assertThat(recent.disease().referenceDate()).isBeforeOrEqualTo(LocalDate.of(2026, 9, 11));
-			System.out.printf("Legacy adapter verified: exact day %s; 2026 target uses disease %s (%s), yield %d (%s).%n",
-				exact.disease().referenceDate(), recent.disease().referenceDate(), recent.disease().matchType(),
-				recent.yield().referenceYear(), recent.yield().matchType());
+			var exactLimitations = new ArrayList<String>();
+			var exact = repository.yieldBaseline("S01", "point_1", 2020, exactLimitations);
+			assertThat(exact.baselineKgPerMu()).isEqualTo(474.377677);
+			var recentLimitations = new ArrayList<String>();
+			var recent = repository.yieldBaseline("S01", "point_1", 2026, recentLimitations);
+			assertThat(recent.available()).isTrue();
+			assertThat(recent.referenceYear()).isEqualTo(2025);
+			assertThat(recent.matchType()).isEqualTo("latest_prior");
+			assertThat(recent.baselineKgPerMu()).isEqualTo(465.474385);
+			System.out.printf("Yield adapter verified: 2020 baseline %s; 2026 target uses year %d (%s).%n",
+				exact.baselineKgPerMu(), recent.referenceYear(), recent.matchType());
 		}
 	}
 
+	/**
+	 * {@code pest_data} is still inspected here: it is the table the reserved archive source will
+	 * read once the earlier-day pest and disease branch is wired up.
+	 */
 	@Test
 	void inspectOnlyLegacyAgriculturalSchemasAndTwoSampleRows() throws Exception {
 		var environment = RiceConfiguration.loadEnvironment();

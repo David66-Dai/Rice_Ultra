@@ -72,9 +72,20 @@ function validDate(value: unknown): value is string {
 
 function matchesEvidence(evidence: AiEvidence | null, selection: AiAnalysisRequest): evidence is AiEvidence {
   return !!evidence && evidence.stationId === selection.stationId && evidence.endDate === selection.date &&
-    evidence.windowDays === selection.windowDays && evidence.growthStage === selection.growthStage &&
+    evidence.windowDays === selection.windowDays && matchesStage(evidence, selection) &&
     validDate(evidence.startDate) && Array.isArray(evidence.metrics) && Array.isArray(evidence.daily) &&
     Array.isArray(evidence.missingDates) && Array.isArray(evidence.limitations)
+}
+
+/**
+ * farm.env_daily decides the 生长周期 whenever that day recorded one, so the returned stage is only
+ * expected to equal the operator's choice when the table had nothing and the choice was used.
+ */
+function matchesStage(evidence: AiEvidence, selection: AiAnalysisRequest): boolean {
+  if (!GROWTH_STAGES.includes(evidence.growthStage)) return false
+  if (evidence.growthStageSource === 'hive') return evidence.growthStage !== 'unknown'
+  if (evidence.growthStageSource === 'user') return evidence.growthStage === selection.growthStage
+  return evidence.growthStageSource === 'unknown' && evidence.growthStage === 'unknown'
 }
 
 function matchesJob(job: AiAnalysisJob, selection: AiAnalysisRequest): boolean {
@@ -272,7 +283,7 @@ export function createDecisionSession(
         if (!matchesJob(received, selection) || (expectedId && received.id !== expectedId)) throw new Error('分析结果与当前请求不一致，请重新读取')
         const job = withExpiry(received)
         if (job.status === 'succeeded') {
-          if (!validResult(job, selection)) throw new Error('报告内容或生育期与当前选择不一致，请重新读取')
+          if (!validResult(job, selection)) throw new Error('报告内容或生长周期与当前选择不一致，请重新读取')
           remember(job)
           publish({ job, evidence: job.result!.evidence, analysisPhase: 'succeeded', analysisError: null })
           scheduleExpiry()

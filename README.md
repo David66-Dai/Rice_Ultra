@@ -49,21 +49,21 @@ Copy-Item conf/config.example.yaml conf/config.yaml
 示例默认关闭串口和初始管理员创建，按需要设置 `app.realtime.serial.enabled`、
 `app.auth.bootstrap-admin.*`。已有账号不会因修改初始化配置而改变密码。
 
-| 配置位置                                      | 生效用途                                |
-| --------------------------------------------- | --------------------------------------- |
-| `server.port`                               | Java API 端口；Vite 代理默认跟随此端口  |
-| `web.dev-host / dev-port / api-host`        | Web 开发服务器监听与后端地址            |
-| `spring.profiles.default`                   | 默认运行环境，当前为 mysql              |
-| mysql 文档的`spring.datasource.*`           | MySQL URL、用户、密码                   |
-| `app.auth.*`                                | JWT、令牌有效期、登录锁定、首次管理员   |
-| `app.cors.*`                                | Java 允许的前端来源                     |
-| `app.realtime.serial.*`                     | 串口启用、COM、波特率和采集站点         |
-| `app.realtime.weather.*`                    | 固定农田经纬度，留空沿用 IP 定位        |
-| `app.hive.*`                                | HiveServer2 URL、认证与查询/网络超时    |
-| `app.dify.*`                                | 新版农业工作流 API 地址、密钥与超时    |
-| `app.hdfs.*`                                | WebHDFS 地址、用户名、报告目录与超时  |
-| `app.inference.host / port / reload / cors` | Python 推理监听、开发重载、CORS         |
-| `app.inference.base-url`                    | Java 转发地址，默认引用上面的 host/port |
+| 配置位置                                      | 生效用途                                              |
+| --------------------------------------------- | ----------------------------------------------------- |
+| `server.port`                               | Java API 端口；Vite 代理默认跟随此端口                |
+| `web.dev-host / dev-port / api-host`        | Web 开发服务器监听与后端地址                          |
+| `spring.profiles.default`                   | 默认运行环境，当前为 mysql                            |
+| mysql 文档的`spring.datasource.*`           | MySQL URL、用户、密码                                 |
+| `app.auth.*`                                | JWT、令牌有效期、登录锁定、首次管理员                 |
+| `app.cors.*`                                | Java 允许的前端来源                                   |
+| `app.realtime.serial.*`                     | 串口启用、COM（可逗号分隔多个候选）、波特率和采集站点 |
+| `app.realtime.weather.*`                    | 固定农田经纬度，留空沿用 IP 定位                      |
+| `app.hive.*`                                | HiveServer2 URL、认证与查询/网络超时                  |
+| `app.dify.*`                                | 新版农业工作流 API 地址、密钥与超时                   |
+| `app.hdfs.*`                                | WebHDFS 地址、用户名、报告目录与超时                  |
+| `app.inference.host / port / reload / cors` | Python 推理监听、开发重载、CORS                       |
+| `app.inference.base-url`                    | Java 转发地址，默认引用上面的 host/port               |
 
 YAML 使用 Spring 原生键名，因此实时配置在 `app.realtime`，数据库在
 `spring.datasource`。文件中的 `---` 分隔基础配置、mysql、dev 三份文档；
@@ -118,8 +118,7 @@ npm run web
 ### 3. Java 后端
 
 ```bash
-cd server
-.\mvnw.cmd spring-boot:run
+npm run server
 ```
 
 - 默认使用 **MySQL** 库 `rice_ultra`（连接见 `conf/config.yaml` 的 mysql 文档）
@@ -161,15 +160,25 @@ cd server
 | `POST /api/auth/logout`   | `{rememberToken?}` 吊销记住登录                                                          |
 | `GET /api/auth/me`        | 当前用户信息                                                                               |
 
-设备控制现支持指定用户名授权、跨网页实时状态同步，以及右上角设备操作/病虫害通知。
+设备控制现支持指定用户名授权，以及网页、自动识别和 AstrBot 共用的实时状态同步；黄色/红色识别
+结果进入右上角病虫害通知。AstrBot 未指定时长时喷药默认 60 秒，驱虫灯保持开启；显式时长受后端
+上限约束。
+红色识别联动可在设备管理页开启“微信确认”开关：确认前不动作；喷药还执行实时风速联锁，人工喷药
+必须有有效红色叶害识别。
 配置和接口说明见 [设备权限与通知](docs/device-permissions-and-notifications.md)。
 AstrBot 适配插件与安装说明见
-[integrations/astrbot_plugin_agri_control](integrations/astrbot_plugin_agri_control/README.md)。
+[设备控制插件](integrations/astrbot_plugin_agri_control/README.md)和
+[农业查询插件](integrations/astrbot_plugin_agri_query/README.md)。
 
 #### 历史数据
 
-历史页面通过 Java API 只读查询 Hive 的 `farm.agri_env_data`，不再导入 CSV 或读取
-MySQL 的旧历史表。已有本地 CSV 和数据库记录不会被删除；登录和实时采集继续使用 MySQL。
+历史页面通过 Java API 只读查询 Hive 的 `farm.env_daily`，不再导入 CSV 或读取
+MySQL 的旧历史表。该表按 `date` 分区、每站每天一行，并带有 `growth_stage` 生长周期字段；
+查询直接比较分区列以裁剪分区，不对其套用 `to_date`。已有本地 CSV 和数据库记录不会被删除；
+登录和实时采集继续使用 MySQL。
+
+病虫害不走 Hive：当天由 MySQL 的 `inspection_diagnosis` 汇总田间巡检识别结果，
+往期由前端的模拟数据填充（见下文“病虫害数据来源”）。
 
 在 `conf/config.yaml` 的 `app.hive` 设置连接：
 
@@ -193,15 +202,15 @@ SASL 连接；仅服务端确实是 NOSASL 时才在 URL 中追加 `;auth=noSasl
 同站同日存在多行时在 Java 中逐指标求均值，缺失值不参与平均，0 保留。
 日期范围通过实际查询计算，不使用可能过期的 Hive 表统计 `numRows`。
 
-| Hive 字段 | 页面数据及单位 |
-|-----------|----------------|
-| `light_lux` | 日均光照，除以 1000 显示 klx |
-| `temperature_celsius / humidity_percent` | 空气温度 °C / 湿度 %RH |
-| `wind_speed_m_s` | 风速 m/s |
-| `soil_temperature_celsius / soil_moisture_percent` | 土壤温度 °C / 湿度 % |
-| `ph` | 土壤 pH |
-| `electrical_conductivity_ds_m` | 电导率 mS/cm（与 dS/m 数值相同） |
-| `nitrogen_concentration_ppm / phosphorus_concentration_ppm / potassium_concentration_ppm` | 氮磷钾浓度 ppm |
+| Hive 字段                                                                                   | 页面数据及单位                   |
+| ------------------------------------------------------------------------------------------- | -------------------------------- |
+| `light_lux`                                                                               | 日均光照，除以 1000 显示 klx     |
+| `temperature_celsius / humidity_percent`                                                  | 空气温度 °C / 湿度 %RH          |
+| `wind_speed_m_s`                                                                          | 风速 m/s                         |
+| `soil_temperature_celsius / soil_moisture_percent`                                        | 土壤温度 °C / 湿度 %            |
+| `ph`                                                                                      | 土壤 pH                          |
+| `electrical_conductivity_ds_m`                                                            | 电导率 mS/cm（与 dS/m 数值相同） |
+| `nitrogen_concentration_ppm / phosphorus_concentration_ppm / potassium_concentration_ppm` | 氮磷钾浓度 ppm                   |
 
 该表不含降雨、病虫害和光谱数据：不展示降雨卡，其他两类显示“暂无归档”。
 环境字段为 null 时显示“—”；前一日没有记录时不生成对比值。
@@ -211,9 +220,9 @@ Hive 不可用返回明确错误，不回退到模拟数据；凭据只留在服
 运行时单独加载，避免 Hive/Hadoop 与 Spring 依赖冲突，停止时释放连接和临时驱动文件。
 首次构建需允许 Maven 下载依赖；无需手工将 Hive JAR 放入应用类路径。
 
-| 接口                                                     | 说明                                           |
-| -------------------------------------------------------- | ---------------------------------------------- |
-| `GET /api/history/range?stationId=S01`                 | 查询站点可用日期范围与记录数                   |
+| 接口                                                     | 说明                                       |
+| -------------------------------------------------------- | ------------------------------------------ |
+| `GET /api/history/range?stationId=S01`                 | 查询站点可用日期范围与记录数               |
 | `GET /api/history/daily?stationId=S01&date=2026-09-10` | 查询当天及前一天的 Hive 环境与土壤日均数据 |
 
 当天实时传感器记录单独写入 `realtime_sensor_reading`，不会用假数据填充：
@@ -269,15 +278,28 @@ Java 集成测试使用独立测试 YAML 和 H2，禁用串口，并与本机 `c
 
 大屏“决策推演”读取所选站点截至目标日最近 7、14 或 30 天的真实 Hive 环境数据。
 气象环境、土壤水肥、病虫风险和综合建议由本机 Dify 生成；点击“开始分析”才执行模型调用。
-输入保留原始 11 项指标的单位、逐日均值、统计有效天数及缺测日期，生育期可手动补充。
+输入保留原始 11 项指标的单位、逐日均值、统计有效天数及缺测日期；生长周期读取自
+`farm.env_daily` 的 `growth_stage`，只有该日表中缺值时界面才出现手动下拉。
 报告正文使用面向种植者的中文自然段，不展示英文、技术字段名或 Markdown 标记；日期和监测数值
 保留阿拉伯数字，单位使用中文。综合建议固定包含“方案A：高成本高效率型”和
 “方案B：低成本稳定型”，说明各自适用情况、具体措施、相对投入与响应速度。
 后端在新报告保存前校验格式，不自动重试模型请求。历史归档保留原文；重新生成后采用新格式。
 
-按当前过渡要求，病虫害继续读取 `farm.pest_data`：优先同日，无则取该站点之前最近记录；
 产量沿用旧流程的 `farm.rice_yield` 第一季基线，优先目标年份，否则取之前最近有效年份。
-页面和工作流均展示旧数据参考日期、年份，不把过去记录当成本窗口实测。
+页面和工作流均展示参考年份，不把过去记录当成本窗口实测。
+
+#### 病虫害数据来源
+
+大屏“历史数据”和“决策推演”共用同一份固定名单：病害为细菌性叶枯病、褐斑病、东格鲁病毒，
+按当日识别次数计；虫害为稻飞虱（褐飞虱、白背飞虱、灰飞虱合并）、二化螟、稻纵卷叶螟，
+按当日检出只数计。每项单独判色，沿用田间巡检的阈值：病害检出即红色；虫害 0 只绿色、
+1 只黄色、2 只及以上红色。
+
+当天数据来自 MySQL 的 `inspection_diagnosis`，后端按北京时间日界汇总，虫害逐条解析
+`result_json` 的 `detections`，按各自类别累计只数。往期日期后端不返回数值，由
+`apps/web/src/lib/pest-disease.ts` 的演示用模拟数据填充，覆盖 2026-05-01 至 2026-09-11，
+按站点与日期确定性生成并随生长周期变化，卡片上标注“往期模拟数据”。
+该模拟数据只存在于前端，不会进入发送给 Dify 的分析输入。
 旧病害率的比例/百分数口径尚未确认，保留原值；虫量采样面积未知，不换算密度。
 旧表暂不可用时明确提示，新环境分析仍可使用；没有演示数据回退。
 
@@ -299,13 +321,13 @@ dify:
 
 所有接口都需要登录：
 
-| 接口 | 用途 |
-|---|---|
-| `GET /api/ai/status` | 只返回连接配置是否完整，不暴露配置内容，也不等同于模型在线 |
-| `GET /api/ai/evidence?stationId=S01&date=2026-09-11&windowDays=7&growthStage=unknown` | 读取环境及旧源证据，不调用模型 |
-| `POST /api/ai/analyses` | 提交同样的四个字段，返回 202 和任务编号 |
-| `GET /api/ai/analyses/{id}` | 读取自己的任务状态或 HDFS 中保存的报告 |
-| `GET /api/ai/analyses?stationId=S01&generatedDate=2026-09-11` | 按生成日期查询往期报告，日期可省略，返回最新 20 条元数据 |
+| 接口                                                                                    | 用途                                                       |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `GET /api/ai/status`                                                                  | 只返回连接配置是否完整，不暴露配置内容，也不等同于模型在线 |
+| `GET /api/ai/evidence?stationId=S01&date=2026-09-11&windowDays=7&growthStage=unknown` | 读取环境及旧源证据，不调用模型                             |
+| `POST /api/ai/analyses`                                                               | 提交同样的四个字段，返回 202 和任务编号                    |
+| `GET /api/ai/analyses/{id}`                                                           | 读取自己的任务状态或 HDFS 中保存的报告                     |
+| `GET /api/ai/analyses?stationId=S01&generatedDate=2026-09-11`                         | 按生成日期查询往期报告，日期可省略，返回最新 20 条元数据   |
 
 每次成功生成的报告只保存一个 HDFS JSON 文件：
 `/rice/output/point_1/output_20260911_1447.json`。站点目录为 `point_1` 至 `point_10`；

@@ -6,8 +6,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartrice.server.config.RiceConfiguration;
+import com.smartrice.server.diagnosis.InspectionDiagnosisRepository;
 import com.smartrice.server.hive.HiveConnectionFactory;
 import com.smartrice.server.hive.HiveProperties;
+import com.smartrice.server.pest.PestDiseaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -32,14 +34,16 @@ class HiveHistoryLiveTests {
 		try (var connections = new HiveConnectionFactory(properties)) {
 		try (var connection = connections.open(); var statement = connection.createStatement()) {
 			statement.setQueryTimeout(30);
-			try (var rows = statement.executeQuery("SELECT `date`, light_lux FROM agri_env_data WHERE station = 'point_1' AND `date` = '2020-01-01' LIMIT 1")) {
+			try (var rows = statement.executeQuery("SELECT `date`, light_lux, growth_stage FROM farm.env_daily WHERE station = 'point_1' AND `date` = '2020-01-01' LIMIT 1")) {
 				assertThat(rows.next()).isTrue();
 				assertThat(rows.getDouble("light_lux")).isEqualTo(161.1);
 			}
 			System.out.println("Hive connection and read-only supplied row query verified.");
 		}
 		var repository = new HiveHistoryRepository(connections);
-		var service = new HistoryDataService(repository);
+		// 2020-01-01 is not the field day, so the pest summary comes back empty by design.
+		var service = new HistoryDataService(repository, new PestDiseaseService(
+			org.mockito.Mockito.mock(InspectionDiagnosisRepository.class), new ObjectMapper()));
 		HistoryRangeResponse range;
 		try {
 			range = repository.range("S01", LocalDate.now(ZoneId.of("Asia/Shanghai"))).orElseThrow();
@@ -57,7 +61,9 @@ class HiveHistoryLiveTests {
 		assertThat(sample.current().environment().airTemperatureC()).isEqualTo(4.9);
 		assertThat(sample.current().environment().soilNitrogenPpm()).isEqualTo(118.0);
 		assertThat(sample.current().environment().soilTemperatureC()).isEqualTo(7.1);
-		assertThat(sample.current().pestDisease()).isNull();
+		assertThat(sample.current().pestDisease().available()).isFalse();
+		assertThat(sample.current().pestDisease().source()).isEqualTo(PestDiseaseService.NO_SAME_DAY_SOURCE);
+		assertThat(sample.current().pestDisease().items()).hasSize(6);
 		assertThat(sample.current().spectrum()).isNull();
 		var latest = service.daily("S01", range.endDate());
 		assertThat(latest.current().date()).isEqualTo(range.endDate());

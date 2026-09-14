@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -39,6 +41,8 @@ public class DeviceActivityService {
 	private final DeviceCommandService commands;
 	private final NotificationEventRepository events;
 	private final NotificationReadStateRepository reads;
+	private final PreventionPolicyService preventionPolicy;
+	private final PreventionSafetyGate safety;
 	private final TransactionTemplate transactions;
 	private final TransactionTemplate recoveryTransactions;
 	private final Map<String, DeviceState> uncertainOverrides = new LinkedHashMap<>();
@@ -48,12 +52,15 @@ public class DeviceActivityService {
 
 	public DeviceActivityService(UserAccountRepository users, DevicesProperties permissions,
 			DeviceCommandService commands, NotificationEventRepository events,
-			NotificationReadStateRepository reads, PlatformTransactionManager transactionManager) {
+			NotificationReadStateRepository reads, PreventionPolicyService preventionPolicy,
+			PreventionSafetyGate safety, PlatformTransactionManager transactionManager) {
 		this.users = users;
 		this.permissions = permissions;
 		this.commands = commands;
 		this.events = events;
 		this.reads = reads;
+		this.preventionPolicy = preventionPolicy;
+		this.safety = safety;
 		this.transactions = new TransactionTemplate(transactionManager);
 		this.transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 		this.recoveryTransactions = new TransactionTemplate(transactionManager);
@@ -66,12 +73,12 @@ public class DeviceActivityService {
 
 	public synchronized DeviceControlResponse control(Jwt jwt, DeviceControlRequest request) {
 		boolean compatibilityRequest = request != null && request.expectedRevision() == null;
-		return controlAs(currentUser(jwt), request, true, false, compatibilityRequest);
+		return controlAs(currentUser(jwt), request, true, true, null, compatibilityRequest);
 	}
 
 	/** Restricted integration entry point; it re-reads the mapped platform account on every request. */
 	public synchronized DeviceControlResponse controlForUserId(Long userId, DeviceControlRequest request) {
-		return controlAs(currentUser(userId), request, true, false, false);
+		return controlAs(currentUser(userId), request, true, true, null, false);
 	}
 
 	/** A red diagnosis may act only with the initiating platform user's current permission. */
@@ -79,7 +86,7 @@ public class DeviceActivityService {
 		UserAccount user = currentUser(jwt);
 		DeviceState current = currentState(stationId, device);
 		return controlAs(user, new DeviceControlRequest(stationId, device, true, current.revision()),
-			true, false, true);
+			true, false, null, true);
 	}
 
 	/** System diagnosis linkage shares the same persistent state, notification and wakeup path. */
@@ -87,7 +94,14 @@ public class DeviceActivityService {
 			String stationId, String device) {
 		DeviceState current = currentState(stationId, device);
 		return controlAs(new Actor(username, displayName),
-			new DeviceControlRequest(stationId, device, true, current.revision()), false, false, true);
+			new DeviceControlRequest(stationId, device, true, current.revision()), false, false, null, true);
+	}
+
+	/** A mapped AstrBot user confirms one exact diagnosis and its captured device revision. */
+	public synchronized DeviceControlResponse enableFromConfirmedDiagnosis(Long userId, String stationId,
+			String device, long expectedRevision) {
+		return controlAs(currentUser(userId), new DeviceControlRequest(stationId, device, true, expectedRevision),
+			true, false, null, false);
 	}
 
 	/** Safety timer for an accepted command. Revoking permission must not prevent its scheduled stop. */
@@ -102,7 +116,7 @@ public class DeviceActivityService {
 				&& request.expectedRevision() != null && current.revision() > request.expectedRevision()) {
 			effective = new DeviceControlRequest(request.stationId(), device, false, current.revision());
 		}
-		return controlAs(new Actor(username, displayName), effective, false, true, false);
+		return controlAs(new Actor(username, displayName), effective, false, false, "定时关闭", false);
 	}
 
 	/** Restart recovery stops only the still-current command recorded for this scheduled action. */
@@ -114,17 +128,72 @@ public class DeviceActivityService {
 				"服务重启后的设备状态已被新操作更新，不执行旧定时停止");
 		}
 		return controlAs(new Actor(username, displayName),
-			new DeviceControlRequest(stationId, device, false, expectedRevision), false, true, false);
+			new DeviceControlRequest(stationId, device, false, expectedRevision), false, false, "定时关闭", false);
+	}
+
+	/** High wind is a fail-safe stop and never depends on a user's current permission. */
+	public synchronized WindInterlockOutcome stopForWind(String stationId, double windSpeedMs,
+			double maximumWindSpeedMs) {
+		DeviceState current = currentState(stationId, DeviceCommandService.PUMP);
+		if (Boolean.FALSE.equals(current.enabled())
+				|| (current.enabled() == null && !"wind_safety".equals(current.updatedBy()))) {
+			return new WindInterlockOutcome(false, false);
+		}
+		try {
+			controlAs(new Actor("wind_safety", "风速联锁"), new DeviceControlRequest(stationId,
+				DeviceCommandService.PUMP, false, current.revision()), false, false, "风速联锁关闭", false);
+			return new WindInterlockOutcome(true, true);
+		}
+		catch (RuntimeException ex) {
+			String reason = ex instanceof ResponseStatusException response && response.getReason() != null
+				? response.getReason() : "设备停止失败";
+			publishPestDisease(stationId, "风速 %.2f m/s 超过喷药上限 %.2f m/s；风速联锁停止失败：%s"
+				.formatted(windSpeedMs, maximumWindSpeedMs, reason));
+			return new WindInterlockOutcome(true, false);
+		}
+	}
+
+	public synchronized PreventionPolicyState updatePreventionPolicy(Jwt jwt,
+			PreventionPolicyUpdateRequest request) {
+		UserAccount user = currentUser(jwt);
+		if (!permissions.permits(user.getUsername())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前账号没有防治策略修改权限");
+		}
+		if (request == null || request.requireAstrBotConfirmation() == null || request.expectedRevision() == null) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请提供确认开关和版本");
+		}
+		PreventionPolicyState before = preventionPolicy.current();
+		PreventionPolicyState result = preventionPolicy.update(request.requireAstrBotConfirmation(),
+			request.expectedRevision(), user.getUsername());
+		if (result.revision() != before.revision()) {
+			String action = result.requireAstrBotConfirmation() ? "开启" : "关闭";
+			String displayName = user.getDisplayName();
+			String actor = displayName == null || displayName.isBlank() || displayName.equals(user.getUsername())
+				? user.getUsername() : displayName + "（" + user.getUsername() + "）";
+			try {
+				transactions.executeWithoutResult(status -> events.saveAndFlush(new NotificationEvent("device_control",
+					actor + "用户" + action + "识别联动微信确认开关", Instant.now(), "S01",
+					user.getUsername(), displayName, null, null)));
+			}
+			finally {
+				changed();
+			}
+		}
+		return result;
+	}
+
+	public synchronized DeviceState currentStateForIntegration(String stationId, String device) {
+		return currentState(stationId, device);
 	}
 
 	private DeviceControlResponse controlAs(UserAccount user, DeviceControlRequest request,
-			boolean enforcePermission, boolean automatic, boolean skipIfAlreadyDesired) {
+			boolean enforcePermission, boolean manual, String stopAction, boolean skipIfAlreadyDesired) {
 		return controlAs(new Actor(user.getUsername(), user.getDisplayName()), request,
-			enforcePermission, automatic, skipIfAlreadyDesired);
+			enforcePermission, manual, stopAction, skipIfAlreadyDesired);
 	}
 
 	private DeviceControlResponse controlAs(Actor actor, DeviceControlRequest request,
-			boolean enforcePermission, boolean automatic, boolean skipIfAlreadyDesired) {
+			boolean enforcePermission, boolean manual, String stopAction, boolean skipIfAlreadyDesired) {
 		if (enforcePermission && !permissions.permits(actor.username())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前账号没有设备控制权限，请联系管理员授权");
 		}
@@ -133,6 +202,9 @@ public class DeviceActivityService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请提供 enabled 和有效的 expectedRevision");
 		}
 		DeviceState previous = currentState(request.stationId(), request.device());
+		if (Boolean.TRUE.equals(request.enabled())) {
+			safety.verifyStart(previous.stationId(), previous.device(), manual);
+		}
 		long expectedRevision = request.expectedRevision() == null
 			? previous.revision() : request.expectedRevision();
 		if (expectedRevision != previous.revision()) {
@@ -148,11 +220,11 @@ public class DeviceActivityService {
 		}
 
 		Instant attemptedAt = Instant.now();
-		String function = DeviceCommandService.PUMP.equals(previous.device()) ? "智能灌溉水泵" : "智能驱虫灯";
+		String function = DeviceCommandService.PUMP.equals(previous.device()) ? "智能喷药" : "智能驱虫灯";
 		String displayName = actor.displayName();
 		String actorLabel = displayName == null || displayName.isBlank() || displayName.equals(actor.username())
 			? actor.username() : displayName + "（" + actor.username() + "）";
-		String action = request.enabled() ? "开启" : automatic ? "定时关闭" : "关闭";
+		String action = request.enabled() ? "开启" : stopAction == null ? "关闭" : stopAction;
 		String message = actorLabel + "用户" + action + function + "功能";
 		boolean[] writeAttempted = {false};
 		DeviceControlResponse[] response = {null};
@@ -218,14 +290,36 @@ public class DeviceActivityService {
 
 	/** Trusted internal extension point for diagnosis jobs; intentionally has no public publish API. */
 	public synchronized PlatformNotification publishPestDisease(String stationId, String message) {
+		return publishPestDisease(stationId, message, null);
+	}
+
+	private synchronized PlatformNotification publishPestDisease(String stationId, String message, Long sourceId) {
 		if (message == null || message.isBlank() || message.length() > 2000
 				|| (stationId != null && !stationId.matches("S(?:0[1-9]|10)"))) {
 			throw new IllegalArgumentException("病虫害通知需要有效站点及 1-2000 字消息");
 		}
-		NotificationEvent saved = events.saveAndFlush(new NotificationEvent("pest_disease", message.trim(),
-			Instant.now(), stationId, null, null, null, null));
+		NotificationEvent saved = transactions.execute(status -> events.saveAndFlush(new NotificationEvent(
+			"pest_disease", message.trim(), Instant.now(), stationId, null, null, null, null, sourceId)));
+		if (saved == null) {
+			throw new IllegalStateException("病虫害通知未保存");
+		}
 		changed();
 		return saved.toResponse();
+	}
+
+	/** Publish only after the recognition row commits, so a dashboard never sees an orphan alert. */
+	public void publishPestDiseaseAfterCommit(String stationId, String message, Long sourceId) {
+		if (TransactionSynchronizationManager.isActualTransactionActive()
+				&& TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					publishPestDisease(stationId, message, sourceId);
+				}
+			});
+			return;
+		}
+		publishPestDisease(stationId, message, sourceId);
 	}
 
 	private UserAccount currentUser(Jwt jwt) {
@@ -250,6 +344,7 @@ public class DeviceActivityService {
 	private DeviceSyncResponse snapshot(UserAccount user) {
 		List<DeviceState> states = commands.states().stream().map(this::withUncertainty).toList();
 		return new DeviceSyncResponse(cursor(), permissions.permits(user.getUsername()), commands.available(), states,
+			preventionPolicy.current(),
 			events.findTop100ByOrderByIdDesc().stream().map(NotificationEvent::toResponse).toList(),
 			events.countByIdGreaterThan(readThrough(user.getId())));
 	}

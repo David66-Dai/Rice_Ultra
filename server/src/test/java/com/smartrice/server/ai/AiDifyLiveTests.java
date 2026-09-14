@@ -10,7 +10,9 @@ import com.smartrice.server.hive.HiveConnectionFactory;
 import com.smartrice.server.hive.HiveProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -26,7 +28,8 @@ class AiDifyLiveTests {
 		assertThat(dify.configured()).as("Fill local app.dify.api-key").isTrue();
 		var json = new ObjectMapper().registerModule(new JavaTimeModule()).disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		try (var connections = new HiveConnectionFactory(hive)) {
-			var source = new AiEvidenceService(new HiveAiRepository(connections), new HiveLegacyAiRepository(connections))
+			var source = new AiEvidenceService(new HiveAiRepository(connections), new HiveLegacyAiRepository(connections),
+				null, Clock.system(ZoneId.of("Asia/Shanghai")))
 				.evidence("S01", LocalDate.of(2026, 9, 11), 7, "unknown");
 			assertThat(source.observedDays()).isEqualTo(7);
 			assertThat(source.metrics()).hasSize(11);

@@ -93,7 +93,7 @@ class ControlClient:
         aliases = {
             "pump": "pump", "water_pump": "pump", "spray": "pump", "水泵": "pump",
             "喷洒": "pump", "喷药": "pump", "药泵": "pump",
-            "lamp": "lamp", "驱虫灯": "lamp", "灭虫灯": "lamp", "灯": "lamp",
+            "lamp": "lamp", "驱虫灯": "lamp", "杀虫灯": "lamp", "灭虫灯": "lamp", "灯": "lamp",
         }
         if isinstance(value, str):
             normalized = value.strip().lower()
@@ -101,10 +101,12 @@ class ControlClient:
                 return "all"
             if normalized in aliases:
                 return aliases[normalized]
-        raise Problem("INVALID_DEVICE", "设备只能是智能灌溉水泵（pump）或智能驱虫灯（lamp）。")
+        raise Problem("INVALID_DEVICE", "设备只能是智能喷药（pump）或智能驱虫灯（lamp）。")
 
     @staticmethod
-    def _duration(value):
+    def _duration(value, *, optional=False):
+        if optional and value in (None, 0, 0.0, ""):
+            return None
         if type(value) not in (int, float) or not math.isfinite(value) or int(value) != value or int(value) < 1:
             raise Problem("INVALID_DURATION", "运行时长必须是正整数秒。")
         return int(value)
@@ -182,6 +184,8 @@ class ControlClient:
             or not isinstance(payload.get("devices"), list)
             or type(payload.get("testControlAllowed")) is not bool
             or type(payload.get("confirmationTtlSeconds")) is not int
+            or type(payload.get("defaultSprayDurationSeconds")) is not int
+            or type(payload.get("indefiniteLampAllowed")) is not bool
             or type(payload.get("maxDurationSeconds")) is not int
         ):
             raise Problem("INVALID_API_RESPONSE", "Java 控制 API 返回了无效的同步数据。")
@@ -275,17 +279,29 @@ class ControlClient:
         except Problem as error:
             return {"ok": False, **base, "configured": False, "code": error.code, "message": error.message}
 
-    async def start(self, identity: Identity, device, seconds=5, station_code="", test=False):
+    async def start(self, identity: Identity, device, seconds=None, station_code="", test=False):
         try:
             self._validate_identity(identity)
             cfg = self._config()
             normalized = self._device(device)
-            duration = self._duration(seconds)
+            requested_duration = self._duration(seconds, optional=True)
             station = (station_code or cfg["station"]).strip().upper() if isinstance(station_code, str) else ""
             if station != cfg["station"]:
                 raise Problem("FORBIDDEN_STATION", "该站点不是插件绑定的 Java 设备站点。")
             if type(test) is not bool:
                 raise Problem("INVALID_TEST_MODE", "测试模式必须由专用工具或命令选择。")
+            snapshot = await self._sync(identity, cfg)
+            if requested_duration is None:
+                if test:
+                    duration = 5
+                elif normalized == "pump":
+                    duration = snapshot["defaultSprayDurationSeconds"]
+                elif snapshot["indefiniteLampAllowed"]:
+                    duration = None
+                else:
+                    raise Problem("DURATION_REQUIRED", "Java 后端要求驱虫灯提供运行时长。")
+            else:
+                duration = requested_duration
             request_id = self._request_id(identity, normalized, True, test)
             command = {
                 "station": station, "device": normalized, "enabled": True,
@@ -299,7 +315,6 @@ class ControlClient:
                     return self._known_result(prior, request_id)
                 return await self._execute(identity, cfg, request_id, command, confirmed=False, test_mode=True)
 
-            snapshot = await self._sync(identity, cfg)
             self._assert_ready(snapshot, duration)
             state = self._state(snapshot, station, normalized)
             confirmation_id = secrets.token_hex(4)
@@ -349,7 +364,7 @@ class ControlClient:
                 raise Problem("CONFIRMATION_EXPIRED", "二次确认已过期，请重新发起开启请求。")
             command = json.loads(raw_command)
             snapshot = await self._sync(identity, cfg)
-            self._assert_ready(snapshot, command["duration_seconds"])
+            self._assert_ready(snapshot, command.get("duration_seconds"))
             state = self._state(snapshot, command["station"], command["device"])
             if state["revision"] != command["expected_revision"]:
                 self._set_result(request_id, "rejected")
@@ -385,12 +400,68 @@ class ControlClient:
                 return results[0]
             return {
                 "ok": all(item.get("ok") for item in results),
-                "status": "multiple", "message": "已分别处理水泵和驱虫灯停止请求。", "results": results,
+                "status": "multiple", "message": "已分别处理喷药和驱虫灯停止请求。", "results": results,
             }
         except Problem as error:
             return failure(error.code, error.message)
         except Exception:
             return failure("STOP_ERROR", "停止请求结果未知，请检查共享状态和实际设备。")
+
+    async def confirm_diagnosis(self, identity: Identity, confirmation_id=""):
+        try:
+            self._validate_identity(identity)
+            cfg = self._config()
+            try:
+                normalized_id = str(uuid.UUID(str(confirmation_id).strip()))
+            except (ValueError, TypeError, AttributeError):
+                raise Problem("INVALID_CONFIRMATION_ID", "病虫害防治确认编号必须是有效 UUID。") from None
+            status, payload = await self._http(
+                "/api/astrbot/diagnosis/confirm",
+                cfg,
+                {
+                    "identity": self._identity_body(identity),
+                    "confirmationId": normalized_id,
+                    "originalText": identity.text[:1000],
+                },
+            )
+            if status != 200:
+                raise self._api_problem(status, payload)
+            if (
+                payload.get("confirmationId") != normalized_id
+                or payload.get("status") != "CONFIRMED"
+                or not isinstance(payload.get("username"), str)
+                or payload.get("device") not in {"pump", "lamp"}
+                or not isinstance(payload.get("stationId"), str)
+            ):
+                raise Problem("INVALID_API_RESPONSE", "Java API 返回了无效的病虫害防治确认结果。")
+            control = payload.get("control")
+            state = control.get("state") if isinstance(control, dict) else None
+            return {
+                "ok": True,
+                "status": "confirmed",
+                "confirmation_id": normalized_id,
+                "username": payload["username"],
+                "station_id": payload["stationId"],
+                "device": payload["device"],
+                "confirmed_at": payload.get("confirmedAt"),
+                "auto_off_at": payload.get("autoOffAt"),
+                "state": state,
+                "message": (
+                    "微信告警已确认；开启指令已通过后端安全核验并提交。"
+                    + ("喷药将在后端默认时长到达后自动停止。" if payload["device"] == "pump" else "")
+                    + "实际设备状态仍需现场反馈确认。"
+                ),
+            }
+        except Problem as error:
+            if error.code in {"API_UNAVAILABLE", "INVALID_API_RESPONSE"}:
+                return failure(
+                    "RESULT_UNKNOWN",
+                    "防治确认结果未知，请查看网页共享状态；不要自动重复确认或另发开启命令。",
+                    confirmation_id=str(confirmation_id),
+                )
+            return failure(error.code, error.message)
+        except Exception:
+            return failure("LOCAL_ERROR", "病虫害防治确认失败，未自动重试。")
 
     async def _execute(self, identity, cfg, request_id, command, *, confirmed, test_mode):
         try:
@@ -411,7 +482,8 @@ class ControlClient:
                 "originalText": identity.text[:1000],
             }
             if command["enabled"]:
-                body["durationSeconds"] = command["duration_seconds"]
+                if command.get("duration_seconds") is not None:
+                    body["durationSeconds"] = command["duration_seconds"]
             status, payload = await self._http("/api/astrbot/devices/control", cfg, body)
             if status != 200:
                 self._set_result(request_id, "rejected")
@@ -458,6 +530,8 @@ class ControlClient:
                 ("测试命令已跳过二次确认；" if test_mode else "")
                 + ("开启" if command["enabled"] else "关闭")
                 + "指令已发送，实际设备状态仍需现场反馈确认。"
+                + ("驱虫灯将保持开启，直至收到关闭指令。"
+                   if command["enabled"] and command.get("duration_seconds") is None else "")
             ),
             "username": username, "test_mode": test_mode,
             "secondary_confirmation_skipped": payload["secondaryConfirmationSkipped"],
@@ -501,4 +575,4 @@ class ControlClient:
 
     @staticmethod
     def _device_label(device):
-        return "智能灌溉水泵" if device == "pump" else "智能驱虫灯"
+        return "智能喷药" if device == "pump" else "智能驱虫灯"

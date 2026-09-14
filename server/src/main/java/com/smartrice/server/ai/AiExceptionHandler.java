@@ -20,6 +20,6 @@ public class AiExceptionHandler {
 	@ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
 		MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class})
 	public ResponseEntity<Map<String, String>> invalid(Exception ex) {
-		return ResponseEntity.badRequest().body(Map.of("code", "invalid_ai_request", "message", "请提供有效站点、YYYY-MM-DD 日期、7/14/30 天窗口及生育期"));
+		return ResponseEntity.badRequest().body(Map.of("code", "invalid_ai_request", "message", "请提供有效站点、YYYY-MM-DD 日期、7/14/30 天窗口及生长周期"));
 	}
 }

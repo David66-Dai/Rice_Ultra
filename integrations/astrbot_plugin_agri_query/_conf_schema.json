@@ -1,0 +1,20 @@
+{
+  "api_base": {
+    "description": "Rice Ultra Java API 地址",
+    "type": "string",
+    "hint": "同机部署使用 http://127.0.0.1:8185；非本机地址必须使用 HTTPS。",
+    "default": "http://127.0.0.1:8185"
+  },
+  "api_token": {
+    "description": "AstrBot 独立集成令牌",
+    "type": "string",
+    "hint": "与控制插件共用服务器 app.astrbot-control.api-token；至少 32 位。",
+    "default": "",
+    "secret": true
+  },
+  "default_station": {
+    "description": "默认站点",
+    "type": "string",
+    "default": "S01"
+  }
+}

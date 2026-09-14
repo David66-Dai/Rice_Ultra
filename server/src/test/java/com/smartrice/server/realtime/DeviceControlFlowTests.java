@@ -1,5 +1,6 @@
 package com.smartrice.server.realtime;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -10,16 +11,20 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.smartrice.server.diagnosis.InferenceClient;
-import com.smartrice.server.diagnosis.InspectionDiagnosisRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartrice.server.auth.UserAccount;
 import com.smartrice.server.auth.UserAccountRepository;
+import com.smartrice.server.diagnosis.InferenceClient;
+import com.smartrice.server.diagnosis.InspectionDiagnosisRepository;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +38,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
@@ -43,6 +49,9 @@ class DeviceControlFlowTests {
 
 	@Autowired
 	MockMvc mvc;
+
+	@Autowired
+	ObjectMapper json;
 
 	@Autowired
 	StationDeviceRepository devices;
@@ -184,6 +193,10 @@ class DeviceControlFlowTests {
 		mvc.perform(multipart("/api/diagnosis/pest").file(image("one.jpg")).param("stationId", "S01").with(jwt()))
 			.andExpect(jsonPath("$.alertLevel").value("yellow"));
 		verify(actuator, never()).sendCommand(0x02);
+		JsonNode yellow = deviceSnapshot().path("notifications").get(0);
+		assertThat(yellow.path("type").asText()).isEqualTo("pest_disease");
+		assertThat(yellow.path("message").asText())
+			.contains("S01 黄色预警", "灰飞虱", "1 只");
 
 		mvc.perform(multipart("/api/diagnosis/pest").file(image("two.jpg")).param("stationId", "S01").with(jwt()))
 			.andExpect(jsonPath("$.activatedDevice").value("lamp"));
@@ -192,6 +205,85 @@ class DeviceControlFlowTests {
 		mvc.perform(get("/api/devices/state").param("stationId", "S01").with(jwt()))
 			.andExpect(jsonPath("$.pump").value(true))
 			.andExpect(jsonPath("$.lamp").value(true));
+	}
+
+	@Test
+	void redDiagnosesWakeAuthoritativeDeviceSyncSnapshot() throws Exception {
+		when(inference.predict(eq("leaf"), any())).thenReturn(Map.of(
+			"task", "leaf",
+			"label", "Bacterial Leaf Blight",
+			"label_zh", "细菌性叶枯病",
+			"confidence", 0.93,
+			"has_leaf_damage", true
+		));
+		JsonNode initial = deviceSnapshot();
+		assertThat(initial.path("devices").get(0).path("device").asText()).isEqualTo("pump");
+		assertThat(initial.path("devices").get(0).path("enabled").isNull()).isTrue();
+
+		MvcResult waiting = mvc.perform(get("/api/devices/sync")
+				.param("after", initial.path("cursor").asText())
+				.param("waitSeconds", "25")
+				.with(jwt()))
+			.andExpect(request().asyncStarted())
+			.andReturn();
+
+		mvc.perform(multipart("/api/diagnosis/leaf").file(image("blight.jpg"))
+				.param("stationId", "S01").with(jwt()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.activatedDevice").value("pump"));
+
+		waiting.getAsyncResult(3000);
+		mvc.perform(asyncDispatch(waiting))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.devices[0].device").value("pump"))
+			.andExpect(jsonPath("$.devices[0].enabled").value(true))
+			.andExpect(jsonPath("$.devices[0].revision").value(1))
+			.andExpect(jsonPath("$.devices[0].updatedBy").value("diagnosis"))
+			.andExpect(jsonPath("$.notifications[0].type").value("device_control"))
+			.andExpect(jsonPath("$.notifications[0].device").value("pump"))
+			.andExpect(jsonPath("$.notifications[0].enabled").value(true))
+			.andExpect(jsonPath("$.notifications[0].actorUsername").value("diagnosis"))
+			.andExpect(jsonPath("$.notifications[0].message").value("系统识别（diagnosis）用户开启智能喷药功能"));
+
+		// The diagnosis also publishes a pest/disease notification after the device wakeup.
+		// Start the next long poll from a fresh cursor so it waits for the pest device change.
+		JsonNode afterLeaf = deviceSnapshot();
+
+		when(inference.predict(eq("pest"), any())).thenReturn(Map.of(
+			"task", "pest",
+			"count", 2,
+			"detections", List.of(
+				Map.of("class_name", "白背飞虱", "confidence", 0.78),
+				Map.of("class_name", "白背飞虱", "confidence", 0.72)
+			)
+		));
+		MvcResult pestWaiting = mvc.perform(get("/api/devices/sync")
+				.param("after", afterLeaf.path("cursor").asText())
+				.param("waitSeconds", "25")
+				.with(jwt()))
+			.andExpect(request().asyncStarted())
+			.andReturn();
+
+		mvc.perform(multipart("/api/diagnosis/pest").file(image("pests.jpg"))
+				.param("stationId", "S01").with(jwt()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.activatedDevice").value("lamp"));
+
+		pestWaiting.getAsyncResult(3000);
+		mvc.perform(asyncDispatch(pestWaiting))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.devices[0].device").value("pump"))
+			.andExpect(jsonPath("$.devices[0].enabled").value(true))
+			.andExpect(jsonPath("$.devices[0].revision").value(1))
+			.andExpect(jsonPath("$.devices[1].device").value("lamp"))
+			.andExpect(jsonPath("$.devices[1].enabled").value(true))
+			.andExpect(jsonPath("$.devices[1].revision").value(1))
+			.andExpect(jsonPath("$.devices[1].updatedBy").value("diagnosis"))
+			.andExpect(jsonPath("$.notifications[0].type").value("device_control"))
+			.andExpect(jsonPath("$.notifications[0].device").value("lamp"))
+			.andExpect(jsonPath("$.notifications[0].enabled").value(true))
+			.andExpect(jsonPath("$.notifications[0].actorUsername").value("diagnosis"))
+			.andExpect(jsonPath("$.notifications[0].message").value("系统识别（diagnosis）用户开启智能驱虫灯功能"));
 	}
 
 	@Test
@@ -217,5 +309,15 @@ class DeviceControlFlowTests {
 
 	private static MockMultipartFile image(String name) {
 		return new MockMultipartFile("file", name, "image/jpeg", new byte[] {1, 2, 3, 4});
+	}
+
+	private JsonNode deviceSnapshot() throws Exception {
+		MvcResult result = mvc.perform(get("/api/devices/sync")
+				.param("waitSeconds", "0").with(jwt()))
+			.andExpect(request().asyncStarted())
+			.andReturn();
+		return json.readTree(mvc.perform(asyncDispatch(result))
+			.andExpect(status().isOk())
+			.andReturn().getResponse().getContentAsString());
 	}
 }

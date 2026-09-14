@@ -43,7 +43,7 @@ class AiReportStoreTests {
 	}
 	private AiAnalysisJob completed() {
 		AiEvidence evidence = new AiEvidence("S01", "point_1", request.date().minusDays(6), request.date(), 7, 7,
-			List.of(), 7, List.of(), List.of(), "unknown", List.of(), null);
+			List.of(), 7, List.of(), List.of(), "unknown", null, "unknown", List.of(), null);
 		return new AiAnalysisJob("temporary-task", "S01", request.date(), 7, "succeeded", GENERATED.minusSeconds(20), GENERATED, null,
 			new AiAnalysisResult(evidence, "weather", "soil", "risk", "summary", "dify-test"));
 	}

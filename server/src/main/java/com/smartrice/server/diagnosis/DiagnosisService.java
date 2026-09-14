@@ -3,8 +3,11 @@ package com.smartrice.server.diagnosis;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartrice.server.diagnosis.StationAlertListResponse.StationAlertStatus;
+import com.smartrice.server.astrbot.AstrBotDiagnosisConfirmation;
+import com.smartrice.server.astrbot.AstrBotDiagnosisConfirmationService;
 import com.smartrice.server.realtime.DeviceActivityService;
 import com.smartrice.server.realtime.DeviceCommandService;
+import com.smartrice.server.realtime.PreventionPolicyService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,13 +33,18 @@ public class DiagnosisService {
 	private final InspectionDiagnosisRepository diagnoses;
 	private final DeviceActivityService devices;
 	private final ObjectMapper json;
+	private final PreventionPolicyService preventionPolicy;
+	private final AstrBotDiagnosisConfirmationService confirmations;
 
 	public DiagnosisService(InferenceClient inference, InspectionDiagnosisRepository diagnoses,
-			DeviceActivityService devices, ObjectMapper json) {
+			DeviceActivityService devices, ObjectMapper json, PreventionPolicyService preventionPolicy,
+			AstrBotDiagnosisConfirmationService confirmations) {
 		this.inference = inference;
 		this.diagnoses = diagnoses;
 		this.devices = devices;
 		this.json = json;
+		this.preventionPolicy = preventionPolicy;
+		this.confirmations = confirmations;
 	}
 
 	@Transactional
@@ -64,11 +72,17 @@ public class DiagnosisService {
 		InspectionDiagnosis saved = diagnoses.save(row);
 		String activatedDevice = null;
 		String deviceError = null;
+		AstrBotDiagnosisConfirmation confirmation = null;
 		if (parsed.alert == AlertLevel.RED) {
 			String device = "leaf".equals(kind) ? DeviceCommandService.PUMP : DeviceCommandService.LAMP;
 			try {
-				devices.enableFromDiagnosis("diagnosis", "系统识别", station, device);
-				activatedDevice = device;
+				if (preventionPolicy.current().requireAstrBotConfirmation()) {
+					confirmation = confirmations.prepare(saved, device, alertSubject(kind, parsed));
+				}
+				else {
+					devices.enableFromDiagnosis("diagnosis", "系统识别", station, device);
+					activatedDevice = device;
+				}
 			}
 			catch (ResponseStatusException ex) {
 				deviceError = ex.getReason() == null ? "设备联动失败" : ex.getReason();
@@ -77,7 +91,11 @@ public class DiagnosisService {
 				deviceError = "设备联动失败";
 			}
 		}
-		return toResponse(saved, result, combinedAlert(station).json(), activatedDevice, deviceError);
+		if (parsed.alert != AlertLevel.GREEN) {
+			devices.publishPestDiseaseAfterCommit(station,
+				alertMessage(station, kind, parsed, activatedDevice, deviceError, confirmation), saved.getId());
+		}
+		return toResponse(saved, result, combinedAlert(station).json(), activatedDevice, deviceError, confirmation);
 	}
 
 	public StationAlertListResponse stationAlerts() {
@@ -203,7 +221,7 @@ public class DiagnosisService {
 	}
 
 	private DiagnosisResponse toResponse(InspectionDiagnosis row, Map<String, Object> result, String stationAlert,
-			String activatedDevice, String deviceError) {
+			String activatedDevice, String deviceError, AstrBotDiagnosisConfirmation confirmation) {
 		return new DiagnosisResponse(
 			row.getId(),
 			row.getStationId(),
@@ -218,7 +236,10 @@ public class DiagnosisService {
 			row.getCreatedAt(),
 			result,
 			activatedDevice,
-			deviceError
+			deviceError,
+			confirmation != null,
+			confirmation == null ? null : confirmation.getId(),
+			confirmation == null ? null : confirmation.getDeliveryStatus()
 		);
 	}
 
@@ -268,6 +289,39 @@ public class DiagnosisService {
 			return flag;
 		}
 		return null;
+	}
+
+	private static String alertMessage(String station, String task, ParsedPrediction parsed,
+			String activatedDevice, String deviceError, AstrBotDiagnosisConfirmation confirmation) {
+		String level = parsed.alert == AlertLevel.RED ? "红色告警" : "黄色预警";
+		String subject = alertSubject(task, parsed);
+		String linkage = "";
+		if (confirmation != null) {
+			linkage = "；等待 AstrBot 微信确认，确认编号 " + confirmation.getId() + "，未确认不会开启设备";
+		}
+		else if (activatedDevice != null) {
+			linkage = "；已联动开启" + (DeviceCommandService.PUMP.equals(activatedDevice) ? "喷药" : "驱虫灯");
+		}
+		else if (deviceError != null) {
+			linkage = "；设备联动未执行：" + deviceError;
+		}
+		return station + " " + level + "：" + subject + linkage;
+	}
+
+	private static String alertSubject(String task, ParsedPrediction parsed) {
+		String subject;
+		if ("leaf".equals(task)) {
+			String label = firstText(parsed.labelZh, firstText(parsed.label, "未知病害"));
+			String confidence = parsed.confidence == null ? ""
+				: String.format(Locale.ROOT, "，置信度 %.1f%%", parsed.confidence <= 1
+					? parsed.confidence * 100 : parsed.confidence);
+			subject = "识别到" + label + confidence;
+		}
+		else {
+			String label = firstText(parsed.labelZh, firstText(parsed.label, "虫害"));
+			subject = "识别到" + label + "，共 " + parsed.detectionCount + " 只";
+		}
+		return subject;
 	}
 
 	private record ParsedPrediction(

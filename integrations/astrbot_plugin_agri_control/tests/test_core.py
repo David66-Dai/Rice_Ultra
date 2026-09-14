@@ -54,6 +54,8 @@ class FakeJavaApi:
                 "devices": [self.state, self.lamp],
                 "testControlAllowed": self.test_allowed,
                 "confirmationTtlSeconds": 120,
+                "defaultSprayDurationSeconds": 60,
+                "indefiniteLampAllowed": True,
                 "maxDurationSeconds": 300,
             })
         if request.url.path.endswith("/control"):
@@ -72,7 +74,10 @@ class FakeJavaApi:
                 "requestId": body["requestId"], "username": self.username,
                 "testMode": body["testMode"],
                 "secondaryConfirmationSkipped": body["testMode"],
-                "autoOffAt": "2026-09-11T08:00:05Z" if body["enabled"] else None,
+                "autoOffAt": (
+                    "2026-09-11T08:00:05Z"
+                    if body["enabled"] and "durationSeconds" in body else None
+                ),
                 "control": {
                     "stationId": "S01", "device": body["device"], "enabled": body["enabled"],
                     "command": "FA01", "sentAt": "2026-09-11T08:00:00Z", "state": dict(target),
@@ -81,6 +86,18 @@ class FakeJavaApi:
             if self.timeout_after_control:
                 raise httpx.ReadTimeout("response lost", request=request)
             return httpx.Response(200, json=payload)
+        if request.url.path.endswith("/diagnosis/confirm"):
+            return httpx.Response(200, json={
+                "confirmationId": body["confirmationId"],
+                "status": "CONFIRMED",
+                "stationId": "S01",
+                "device": "pump",
+                "username": self.username,
+                "confirmedAt": "2026-09-12T09:00:00Z",
+                "control": {
+                    "state": {**self.state, "enabled": True, "revision": self.state["revision"] + 1}
+                },
+            })
         raise AssertionError(f"unexpected route: {request.url}")
 
 
@@ -104,7 +121,7 @@ def fixture(tmp_path):
     return make, api
 
 
-def identity(message_id="message-1", text="打开水泵 5 秒", umo="umo:test", sender="sender-1"):
+def identity(message_id="message-1", text="打开喷药 5 秒", umo="umo:test", sender="sender-1"):
     return core.Identity(umo=umo, sender_id=sender, message_id=message_id, text=text)
 
 
@@ -115,9 +132,11 @@ def run(awaitable):
 def test_normal_start_only_prepares_and_same_user_confirmation_controls(fixture):
     make, api = fixture
     client = make()
-    prepared = run(client.start(identity(), "水泵", 5))
+    prepared = run(client.start(identity(), "喷药", 5))
     assert prepared["status"] == "pending_confirmation"
     assert prepared["requires_confirmation"] is True
+    assert "智能喷药" in prepared["message"]
+    assert "水泵" not in prepared["message"]
     assert len(api.controls) == 0
     confirmed = run(client.confirm(identity(message_id="confirmation-message"), prepared["confirmation_id"]))
     assert confirmed["ok"] is True
@@ -127,6 +146,55 @@ def test_normal_start_only_prepares_and_same_user_confirmation_controls(fixture)
     body = json.loads(api.controls[0].content)
     assert body["confirmed"] is True and body["testMode"] is False
     assert body["durationSeconds"] == 5
+
+
+def test_legacy_water_pump_alias_remains_accepted(fixture):
+    make, api = fixture
+    prepared = run(make().start(identity(message_id="legacy", text="打开水泵 5 秒"), "水泵", 5))
+    assert prepared["status"] == "pending_confirmation"
+    assert "智能喷药" in prepared["message"]
+    assert not api.controls
+
+
+def test_pest_killing_lamp_alias_is_accepted(fixture):
+    make, api = fixture
+    prepared = run(make().start(identity(message_id="lamp-alias", text="打开杀虫灯"), "杀虫灯"))
+    assert prepared["status"] == "pending_confirmation"
+    assert not api.controls
+
+
+def test_omitted_duration_defaults_spray_to_one_minute(fixture):
+    make, api = fixture
+    client = make()
+    prepared = run(client.start(identity(message_id="default-spray", text="打开喷药"), "喷药"))
+    confirmed = run(client.confirm(identity(message_id="confirm-default"), prepared["confirmation_id"]))
+    assert confirmed["ok"] is True
+    assert json.loads(api.controls[0].content)["durationSeconds"] == 60
+    assert confirmed["auto_off_at"] is not None
+
+
+def test_lamp_without_duration_stays_on_until_explicit_stop(fixture):
+    make, api = fixture
+    client = make()
+    prepared = run(client.start(identity(message_id="lamp-on", text="打开驱虫灯"), "驱虫灯"))
+    confirmed = run(client.confirm(identity(message_id="confirm-lamp"), prepared["confirmation_id"]))
+    body = json.loads(api.controls[0].content)
+    assert confirmed["ok"] is True
+    assert "durationSeconds" not in body
+    assert confirmed["auto_off_at"] is None
+    assert "保持开启" in confirmed["message"]
+
+
+def test_explicit_duration_still_schedules_lamp_and_longer_spray(fixture):
+    make, api = fixture
+    lamp = make()
+    prepared = run(lamp.start(identity(message_id="lamp-90", text="打开驱虫灯 90 秒"), "lamp", 90))
+    run(lamp.confirm(identity(message_id="confirm-lamp-90"), prepared["confirmation_id"]))
+    spray = make()
+    prepared = run(spray.start(identity(message_id="spray-120", text="打开喷药 120 秒"), "pump", 120))
+    run(spray.confirm(identity(message_id="confirm-spray-120"), prepared["confirmation_id"]))
+    assert json.loads(api.controls[0].content)["durationSeconds"] == 90
+    assert json.loads(api.controls[1].content)["durationSeconds"] == 120
 
 
 def test_other_identity_cannot_confirm_even_with_confirmation_id(fixture):
@@ -158,7 +226,7 @@ def test_state_change_before_confirmation_requires_new_request(fixture):
     assert not api.controls
 
 
-@pytest.mark.parametrize("text", ["测试水泵 3 秒", "/agri_test pump 3", "test pump 3 seconds"])
+@pytest.mark.parametrize("text", ["测试喷药 3 秒", "/agri_test spray 3", "test spray 3 seconds"])
 def test_explicit_test_skips_confirmation_only_when_both_switches_allow(fixture, text):
     make, api = fixture
     api.test_allowed = True
@@ -171,7 +239,7 @@ def test_explicit_test_skips_confirmation_only_when_both_switches_allow(fixture,
 
 
 @pytest.mark.parametrize("local,server,text", [
-    (False, True, "测试水泵"), (True, False, "测试水泵"), (True, True, "打开水泵"),
+    (False, True, "测试喷药"), (True, False, "测试喷药"), (True, True, "打开喷药"),
 ])
 def test_test_mode_fails_closed_without_both_switches_and_explicit_text(fixture, local, server, text):
     make, api = fixture
@@ -183,7 +251,7 @@ def test_test_mode_fails_closed_without_both_switches_and_explicit_text(fixture,
 
 def test_stop_is_immediate_and_does_not_require_message_id_or_confirmation(fixture):
     make, api = fixture
-    result = run(make().stop(identity(message_id="", text="立即停止水泵"), "pump"))
+    result = run(make().stop(identity(message_id="", text="立即停止喷药"), "pump"))
     assert result["ok"] is True
     body = json.loads(api.controls[0].content)
     assert body["enabled"] is False
@@ -208,7 +276,7 @@ def test_lost_control_response_is_unknown_and_duplicate_does_not_retry(fixture):
     api.test_allowed = True
     api.timeout_after_control = True
     client = make(allow_test_command=True)
-    event = identity(text="测试水泵")
+    event = identity(text="测试喷药")
     first = run(client.start(event, "pump", 3, test=True))
     second = run(client.start(event, "pump", 3, test=True))
     assert first["code"] == second["code"] == "RESULT_UNKNOWN"
@@ -249,3 +317,24 @@ def test_status_reports_real_platform_mapping_and_never_exposes_token(fixture):
     assert result["can_control"] is True
     assert TOKEN not in json.dumps(result)
     assert not api.controls
+
+
+def test_diagnosis_confirmation_uses_server_id_and_mapped_identity(fixture):
+    make, api = fixture
+    confirmation_id = "00000000-0000-4000-8000-000000000099"
+    result = run(make().confirm_diagnosis(identity(text=f"确认 {confirmation_id}"), confirmation_id))
+    assert result["ok"] is True
+    assert result["status"] == "confirmed"
+    body = json.loads(api.requests[-1].content)
+    assert body == {
+        "identity": {"umo": "umo:test", "senderId": "sender-1"},
+        "confirmationId": confirmation_id,
+        "originalText": f"确认 {confirmation_id}",
+    }
+
+
+def test_invalid_diagnosis_confirmation_never_posts(fixture):
+    make, api = fixture
+    result = run(make().confirm_diagnosis(identity(), "not-a-uuid"))
+    assert result["code"] == "INVALID_CONFIRMATION_ID"
+    assert not api.requests

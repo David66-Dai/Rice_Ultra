@@ -48,6 +48,8 @@ class DeviceActivityServiceTests {
 	private final DeviceActuator serial = mock(DeviceActuator.class);
 	private final DeviceCommandService commands = new DeviceCommandService(deviceRepository, provider);
 	private final DevicesProperties permissions = new DevicesProperties();
+	private final PreventionPolicyService preventionPolicy = mock(PreventionPolicyService.class);
+	private final PreventionSafetyGate safety = mock(PreventionSafetyGate.class);
 	private final Jwt jwt = Jwt.withTokenValue("test").header("alg", "HS256").subject("stale-name")
 		.claim("uid", 1L).expiresAt(Instant.now().plusSeconds(60)).build();
 	private DeviceActivityService activity;
@@ -74,7 +76,8 @@ class DeviceActivityServiceTests {
 		when(serial.isAvailable()).thenReturn(true);
 		when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
 		permissions.setControlUsers(List.of("operator"));
-		activity = new DeviceActivityService(users, permissions, commands, events, reads, transactions);
+		activity = new DeviceActivityService(users, permissions, commands, events, reads,
+			preventionPolicy, safety, transactions);
 	}
 
 	@Test
@@ -109,6 +112,13 @@ class DeviceActivityServiceTests {
 		assertThatThrownBy(() -> activity.control(jwt, command())).isInstanceOf(ResponseStatusException.class);
 		verify(serial, never()).sendCommand(anyInt());
 		assertThat(snapshot().devices().getFirst().revision()).isZero();
+	}
+
+	@Test
+	void mappedAstrBotSprayUsesTheSameManualSafetyGateAsTheWeb() {
+		activity.controlForUserId(1L, command());
+		verify(safety).verifyStart("S01", "pump", true);
+		verify(serial).sendCommand(0x01);
 	}
 
 	@Test

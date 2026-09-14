@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -32,7 +33,8 @@ class AiHdfsLiveTests {
 		AiReportStore store = new AiReportStore(hdfs, json);
 		String owner = "hdfs-archive-verification";
 		try (var connections = new HiveConnectionFactory(hive)) {
-			var evidence = new AiEvidenceService(new HiveAiRepository(connections), new HiveLegacyAiRepository(connections));
+			var evidence = new AiEvidenceService(new HiveAiRepository(connections), new HiveLegacyAiRepository(connections),
+				null, Clock.system(ZoneId.of("Asia/Shanghai")));
 			var client = new DifyWorkflowClient(dify, json);
 			AiAnalysisService service = new AiAnalysisService(evidence, client, store);
 			AiAnalysisJob saved;

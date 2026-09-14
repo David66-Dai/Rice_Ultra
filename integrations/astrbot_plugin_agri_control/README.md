@@ -1,12 +1,12 @@
 # 数智稻安 AstrBot 设备控制 v2
 
-本插件通过 Rice Ultra Java 后端控制 S01 的智能灌溉水泵和驱虫灯。
+本插件通过 Rice Ultra Java 后端控制 S01 的智能喷药和驱虫灯。
 所有操作使用服务器上的 AstrBot 身份映射，最终仍由平台账号启用状态和
 `app.devices.control-users` 决定权限。成功指令会进入网页共享状态并通知所有网页用户。
 
 插件不读取服务器的 `conf/config.yaml`，也不使用平台账号密码或网页 JWT。
-它只保存一个受限的 AstrBot 集成令牌；该令牌只能访问
-`/api/astrbot/devices/sync` 和 `/api/astrbot/devices/control`。
+它只保存一个受限的 AstrBot 集成令牌；该令牌只用于 `/api/astrbot/**` 下的设备控制与只读农业查询，
+不能替代网页 JWT 访问其他平台 API。
 
 ## 安装
 
@@ -36,7 +36,9 @@ AstrBot 官方当前配置机制会读取 `_conf_schema.json`，在 WebUI 生成
        api-token: "至少32位的独立随机令牌"
        allow-test-control: false
        confirmation-ttl: "2m"
+       default-spray-duration-seconds: 60
        max-duration-seconds: 300
+       max-query-range-days: 31
        identities:
          - umo: "真实 UMO"
            sender-id: "真实发送者 ID"
@@ -68,7 +70,7 @@ AstrBot 官方当前配置机制会读取 `_conf_schema.json`，在 WebUI 生成
 普通开启分成两步：
 
 ```text
-/agri_start 驱虫灯 5
+/agri_start 喷药 5
 /agri_confirm 返回的确认编号
 ```
 
@@ -78,10 +80,14 @@ AstrBot 官方当前配置机制会读取 `_conf_schema.json`，在 WebUI 生成
 自然语言工具同样先调用 `start_agri_device`，只有用户随后明确确认，Agent 才能调用
 `confirm_agri_device`。把 `PERSONA.md` 的规则加入当前人格，避免模型替用户自动确认。
 
+未指定时长时，喷药按后端下发的默认值运行 60 秒并自动停止；驱虫灯持续开启，直到网页、后端或
+AstrBot 明确发送关闭。用户显式指定时长时，喷药和驱虫灯都按该时长运行并自动停止，但不能超过
+`max-duration-seconds`。测试命令未指定时长仍固定使用 5 秒，不允许无限测试开启。
+
 停止不需要确认：
 
 ```text
-/agri_stop 水泵
+/agri_stop 喷药
 /agri_stop 驱虫灯
 /agri_stop 全部
 ```
@@ -100,7 +106,7 @@ app:
 并在 AstrBot 插件设置中启用 `allow_test_command`。然后由授权用户明确发送：
 
 ```text
-/agri_test 驱虫灯 5
+/agri_test 喷药 5
 ```
 
 测试命令只跳过聊天端二次确认。它仍检查：
@@ -115,7 +121,7 @@ app:
 
 ## 自动关闭与同步
 
-开启持续时间由 Java 后端计时，不依赖模型等待。定时关闭成功后会更新共享设备版本并广播通知。
+有限开启的持续时间由 Java 后端计时，不依赖模型等待。定时关闭成功后会更新共享设备版本并广播通知。
 如果后端进程在计时期间重启，数据库中的未完成关闭任务会在启动后优先补发停止；如果网页已经执行了
 更新的设备操作，版本保护会放弃旧定时任务，避免覆盖新操作。
 
@@ -128,14 +134,47 @@ app:
 | 命令 | 用途 |
 | --- | --- |
 | `/agri_control_status` | 查看当前身份映射、权限和设备链路，不操作设备 |
-| `/agri_start 驱虫灯 5` | 创建普通开启请求，等待二次确认 |
+| `/agri_start 喷药 5` | 创建普通开启请求，等待二次确认 |
 | `/agri_confirm [确认编号]` | 确认最近或指定的待确认请求 |
-| `/agri_stop 水泵` | 立即发送停止指令 |
+| `/agri_stop 喷药` | 立即发送停止指令 |
 | `/agri_result [请求UUID]` | 查看本地保存的请求结果 |
-| `/agri_test 驱虫灯 5` | 在双开关启用后跳过二次确认执行测试 |
+| `/agri_test 喷药 5` | 在双开关启用后跳过二次确认执行测试 |
+| `/agri_confirm_alert 确认UUID` | 确认一条已送达的病虫害微信告警 |
 
 对应 LLM 工具为 `start_agri_device`、`confirm_agri_device`、`stop_agri_device`、
-`query_agri_control` 和 `test_agri_device`。
+`query_agri_control`、`confirm_diagnosis_control` 和 `test_agri_device`。
+
+斜杠命令面向微信用户，返回中文操作结果而不是原始 JSON；LLM 工具仍返回结构化 JSON，供 Agent
+读取确认编号、状态和安全拦截原因。
+
+## 病虫害识别微信确认
+
+大屏“设备管理”提供“识别联动微信确认”开关。开关开启时，红色叶害/虫害识别只创建持久化确认单，
+不会立即喷药或开灯。Java 后端通过 AstrBot `/api/v1/im/message` 向配置的微信 UMO 推送确认编号；
+收到告警的授权用户发送：
+
+```text
+/agri_confirm_alert 完整确认UUID
+```
+
+也可以在明确回复确认时由 Agent 调用 `confirm_diagnosis_control`。后端会再次检查确认期限、告警接收
+UMO、平台账号权限、设备版本和喷药风速；任一条件不满足均不会开启。相同确认编号成功后再次提交
+只返回已确认状态，不会重复发送开启指令。
+
+主动告警凭据只配置在 Java 后端 `app.prevention-control` 下，不写进插件：
+
+```yaml
+astrbot-alert-enabled: true
+astrbot-base-url: "http://127.0.0.1:6185"
+astrbot-api-key: "AstrBot WebAPI Key"
+alert-umos: ["接收微信告警的完整 UMO"]
+```
+
+喷药安全阈值同样由后端控制。默认要求 2 分钟内的实时风速不超过 3.0 m/s；人工网页或 AstrBot
+喷药还必须存在 24 小时内的最新红色叶害识别。喷药运行中收到超阈值风速会立即发送停止指令并同步大屏。
+个人微信会把单条文本内的换行压平，因此病虫害确认告警会拆成四条连续的独立消息：摘要、识别与
+拟开启设备、确认编号、确认说明。达到设定时长自动关闭、服务重启后的安全关闭，以及风速联锁关闭
+或失败，都会向告警 UMO 主动发送一条简短中文设备反馈；直接 `/agri_*` 命令则在当前聊天中立即返回中文结果。
 
 ## 验证边界
 

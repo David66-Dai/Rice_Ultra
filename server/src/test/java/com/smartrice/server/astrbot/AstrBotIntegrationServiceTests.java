@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.smartrice.server.auth.UserAccountRepository;
 import com.smartrice.server.realtime.DeviceActivityService;
@@ -24,7 +26,8 @@ class AstrBotIntegrationServiceTests {
 	private final UserAccountRepository users = mock(UserAccountRepository.class);
 	private final DeviceActivityService devices = mock(DeviceActivityService.class);
 	private final AstrBotScheduledStopRepository stops = mock(AstrBotScheduledStopRepository.class);
-	private final AstrBotIntegrationService service = new AstrBotIntegrationService(properties, users, devices, stops);
+	private final AstrBotAlertSender alerts = mock(AstrBotAlertSender.class);
+	private final AstrBotIntegrationService service = new AstrBotIntegrationService(properties, users, devices, stops, alerts);
 
 	@AfterEach
 	void closeTimer() {
@@ -42,6 +45,8 @@ class AstrBotIntegrationServiceTests {
 		service.recoverScheduledStops();
 
 		verify(devices, timeout(3000)).automaticStopAfterRestart("operator", "操作员", "S01", "pump", 1L);
+		verify(alerts, timeout(3000)).sendDeviceFeedback(eq("S01"), eq("pump"), eq(false),
+			eq("自动关闭"), anyString());
 		verify(stops, timeout(3000)).saveAndFlush(stop);
 		assertThat(stop.getStatus()).isEqualTo("COMPLETED");
 	}

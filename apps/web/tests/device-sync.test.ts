@@ -57,6 +57,16 @@ function snapshot(overrides: Partial<DeviceSyncResponse> = {}): DeviceSyncRespon
       updatedAt: null,
       updatedBy: null,
     }],
+    preventionPolicy: {
+      requireAstrBotConfirmation: true,
+      revision: 0,
+      updatedAt: '2026-09-12T00:00:00Z',
+      updatedBy: null,
+      spraySafetyEnabled: true,
+      maxSprayWindSpeedMs: 3,
+      sensorMaxAgeSeconds: 120,
+      leafEvidenceMaxAgeSeconds: 86400,
+    },
     notifications: [],
     unreadCount: 0,
     ...overrides,
@@ -292,6 +302,22 @@ test('a second control is rejected while the first command is in flight', async 
   assert.equal(client.network.posts().length, 1)
   client.network.at(1).resolve({ state: snapshot().devices[0] })
   await command
+})
+
+test('confirmation policy toggle posts the synchronized revision and refreshes without retrying', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const client = setup(t)
+  client.session.start()
+  client.network.at(0).resolve(snapshot())
+  await settle()
+  const update = client.session.setDiagnosisConfirmationRequired(false)
+  const post = client.network.at(1)
+  assert.equal(post.path, '/api/devices/prevention-policy')
+  assert.deepEqual(post.options.body, { requireAstrBotConfirmation: false, expectedRevision: 0 })
+  post.resolve({ requireAstrBotConfirmation: false, revision: 1 })
+  await update
+  assert.equal(client.network.at(2).path, '/api/devices/sync')
+  assert.equal(client.network.posts().length, 1)
 })
 
 test('markRead uses the current maximum notification id and refreshes only its own session', async t => {

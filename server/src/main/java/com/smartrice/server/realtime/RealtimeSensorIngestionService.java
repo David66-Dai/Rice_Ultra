@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.LinkedHashMap;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,17 +16,20 @@ public class RealtimeSensorIngestionService {
 	private final ObjectMapper json;
 	private final boolean redisEnabled;
 	private final String deviceId;
+	private final ApplicationEventPublisher events;
 
 	public RealtimeSensorIngestionService(RealtimeSensorReadingRepository readings,
 			RedisPendingSampleRepository pending, ObjectMapper json,
 			@Value("${app.realtime.redis.enabled:false}") boolean redisEnabled,
-			@Value("${app.realtime.redis.device-id:environment_platform_01}") String deviceId) {
+			@Value("${app.realtime.redis.device-id:environment_platform_01}") String deviceId,
+			ApplicationEventPublisher events) {
 		if (!deviceId.matches("[A-Za-z0-9_-]{1,128}")) throw new IllegalArgumentException("Invalid Redis device-id");
 		this.readings = readings;
 		this.pending = pending;
 		this.json = json;
 		this.redisEnabled = redisEnabled;
 		this.deviceId = deviceId;
+		this.events = events;
 	}
 
 	@Transactional
@@ -36,6 +40,7 @@ public class RealtimeSensorIngestionService {
 			sample.startedAt = reading.startedAt == null ? reading.sampledAt : reading.startedAt;
 			pending.save(sample);
 		}
+		events.publishEvent(new WindReadingEvent(reading.stationId, reading.windSpeedMs, reading.sampledAt));
 	}
 
 	String payload(RealtimeSensorReading reading) {

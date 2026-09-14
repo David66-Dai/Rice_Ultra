@@ -58,7 +58,13 @@ class HistoryDataFlowTests {
 			.andExpect(jsonPath("$.current.environment.soilTemperatureC").value(7.1))
 			.andExpect(jsonPath("$.current.environment.soilMoisturePercent").value(29.1))
 			.andExpect(jsonPath("$.current.environment.rainfallMmH").isEmpty())
-			.andExpect(jsonPath("$.current.pestDisease").isEmpty())
+			// 2020-01-01 is not the field day, so the catalogue comes back present but without values.
+			.andExpect(jsonPath("$.current.pestDisease.available").value(false))
+			.andExpect(jsonPath("$.current.pestDisease.source").value("none"))
+			.andExpect(jsonPath("$.current.pestDisease.items.length()").value(6))
+			.andExpect(jsonPath("$.current.pestDisease.items[0].key").value("bacterial_leaf_blight"))
+			.andExpect(jsonPath("$.current.pestDisease.items[0].value").isEmpty())
+			.andExpect(jsonPath("$.current.pestDisease.items[3].key").value("rice_planthopper"))
 			.andExpect(jsonPath("$.current.spectrum").isEmpty())
 			.andExpect(jsonPath("$.previous").isEmpty());
 	}
