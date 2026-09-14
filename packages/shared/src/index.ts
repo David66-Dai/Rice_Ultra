@@ -235,7 +235,9 @@ export type DiagnosisRecord = {
   deviceError?: string | null;
   confirmationRequired?: boolean;
   pendingConfirmationId?: string | null;
-  alertDeliveryStatus?: "PENDING" | "SENT" | "FAILED" | null;
+  // PARTIAL: some alert sessions received the request and some did not; only a session
+  // that actually received it may confirm, so the device still stays closed until then.
+  alertDeliveryStatus?: "PENDING" | "SENT" | "PARTIAL" | "FAILED" | null;
 };
 
 export type StationAlertStatus = {

@@ -108,9 +108,9 @@ export function DeviceManagement() {
 
         {snapshot?.preventionPolicy && <section className="prevention-policy" aria-labelledby="prevention-policy-title">
           <div>
-            <strong id="prevention-policy-title">识别联动微信确认</strong>
+            <strong id="prevention-policy-title">识别联动 AstrBot 消息确认</strong>
             <p>{snapshot.preventionPolicy.requireAstrBotConfirmation
-              ? '已开启：红色识别先发送 AstrBot 微信告警，收到授权用户确认后才开启防治设备。'
+              ? '已开启：红色识别先发送 AstrBot 消息告警，收到授权用户确认后才开启防治设备。'
               : '已关闭：红色识别可直接联动设备，仍执行喷药风速安全校验。'}</p>
             <small>人工喷药必须有有效红色叶害依据；风速超过 {snapshot.preventionPolicy.maxSprayWindSpeedMs} m/s 将禁止或联锁停止喷药。</small>
           </div>

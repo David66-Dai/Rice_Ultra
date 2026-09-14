@@ -8,6 +8,10 @@
 - `api_token`：与后端 `app.astrbot-control.api-token` 一致，至少 32 位。
 - `default_station`：默认 `S01`。
 
+插件要求 AstrBot 4.18 或更高版本，显式支持个人微信、OneBot v11、QQ 官方 WebSocket 和
+QQ 官方 Webhook 适配器。
+在 QQ 私聊或群聊中可用 AstrBot 内置 `/sid` 获取该会话的完整 UMO 与 sender ID；不要根据 QQ 号手工拼接 UMO。
+
 后端仍按 `UMO + sender ID` 精确映射平台账号；未配置、重复映射和停用账号全部拒绝。服务端 `max-query-range-days` 默认限制一次查询 31 天，最高 366 天。
 
 ## 已迁移能力

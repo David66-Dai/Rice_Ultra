@@ -61,6 +61,8 @@ class DeviceActivityServiceTests {
 		when(user.getUsername()).thenReturn("operator");
 		when(user.getDisplayName()).thenReturn("操作员");
 		when(user.isEnabled()).thenReturn(true);
+		// An ordinary web user: only a service account has web login switched off.
+		when(user.isLoginEnabled()).thenReturn(true);
 		when(users.findById(1L)).thenReturn(Optional.of(user));
 		when(reads.findById(1L)).thenReturn(Optional.empty());
 		when(events.findTop100ByOrderByIdDesc()).thenReturn(List.of());

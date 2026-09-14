@@ -447,7 +447,7 @@ class ControlClient:
                 "auto_off_at": payload.get("autoOffAt"),
                 "state": state,
                 "message": (
-                    "微信告警已确认；开启指令已通过后端安全核验并提交。"
+                    "AstrBot 消息告警已确认；开启指令已通过后端安全核验并提交。"
                     + ("喷药将在后端默认时长到达后自动停止。" if payload["device"] == "pump" else "")
                     + "实际设备状态仍需现场反馈确认。"
                 ),

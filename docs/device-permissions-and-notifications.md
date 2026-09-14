@@ -15,6 +15,20 @@ app:
 修改配置后重启 Java 后端生效；这不会创建账号、修改密码或打开设备。
 浏览器只获取当前账号是否有权限，不获取完整名单或配置文件。
 
+## 服务账号（机器人专用，不能登录网页）
+
+AstrBot 需要一个平台账号来承接映射，但任何人都不应该能用它登录网页。
+`user_account.login_enabled` 就是这个开关：
+
+- 用 `server/create-user.cmd -Username astrbot -DisplayName "AstrBot 机器人" -NoLogin` 创建。
+  该模式不接受密码，库里只写入一段随机且不回显的 BCrypt 哈希，角色默认 `SERVICE`。
+- `enabled=1` 保留，服务端的 UMO + sender ID 精确映射照常解析该账号；
+  `login_enabled=0` 则让密码登录、记住登录和先前签发的访问令牌全部被拒绝（HTTP 403 `login_disabled`）。
+- 不能用 `-Disabled` 代替：`enabled=0` 会连 AstrBot 映射一起拒绝。
+- 服务账号能做什么仍然只由 `app.devices.control-users` 决定，与角色无关。
+- `login_enabled` 默认 `b'1'`，服务端把 `1` 和 `NULL` 都视为允许登录，补列升级不影响任何既有账号。
+  已建库的环境执行 `server/sql/migrations/20260914_service_account_login_flag.sql`。
+
 ## 状态同步与冲突处理
 
 - 登录后全局启动一个带 Bearer 令牌的 HTTP 长轮询，切换页面仍接收消息。
@@ -61,15 +75,41 @@ Java 开放受限的 `/api/astrbot/devices/*` 与只读 `/api/astrbot/agricultur
 
 ## 识别联动确认与喷药联锁
 
-- “设备管理”的“识别联动微信确认”开关持久化到数据库，并通过设备长轮询同步到全部在线页面。
-- 开关开启时，红色识别只生成确认单并主动发送 AstrBot 微信告警；未送达、未确认、过期、身份不符
+- “设备管理”的“识别联动 AstrBot 消息确认”开关持久化到数据库，并通过设备长轮询同步到全部在线页面。
+- 开关开启时，红色识别只生成确认单并主动发送 AstrBot 消息告警；未送达、未确认、过期、身份不符
   或设备版本变化都不会开启设备。确认接口仍复用 UMO + sender ID 到平台账号的严格映射。
 - 喷药开启前读取最新实时风速，数据缺失、无效、过期或高于配置阈值时拒绝开启。
 - 网页和普通 AstrBot 人工喷药还必须有配置时限内的最新红色叶害识别；识别确认单自身绑定原始红色依据。
 - 喷药运行中每次新风速入库后都会检查阈值；超限通过统一设备通道发送停止、记录操作者
   `wind_safety`、广播大屏状态。停止失败会产生告警，并在后续超限样本到达时再次检查。
-- 个人微信会压平单条文本内的换行，因此确认告警拆为连续的摘要、设备、确认编号和说明消息；
-  定时自动关闭、重启安全关闭和风速联锁结果会主动通知告警 UMO。
+- 为兼容会压平单条文本换行的适配器，确认告警拆为连续的摘要、设备、确认编号和说明消息；
+  定时自动关闭、重启安全关闭和风速联锁结果会主动通知所有配置的告警 UMO。
+
+## 多平台告警投递（微信 + QQ 同时在线）
+
+`app.prevention-control.alert-umos` 里的每个会话都是独立的告警目标，投递状态、重试次数、
+错误与送达时间按会话分别落在 `astrbot_diagnosis_confirmation_target`
+（迁移脚本 `server/sql/migrations/20260914_astrbot_alert_targets.sql`）：
+
+- 微信发送失败不会阻止 QQ 收到告警，QQ 失败也不会阻止微信；失败的会话按自己的次数独立退避重试，
+  已经成功的会话不会被重复发送，服务重启后的恢复投递同样跳过已送达会话。
+- **只有确实收到该条告警的会话才能确认放行设备**。从未送达的会话确认返回 HTTP 409，
+  不在 `alert-umos` 里的会话返回 HTTP 403，两种情况都不会下发任何设备指令。
+- 确认单上的 `deliveryStatus` 是汇总值：`SENT` 全部送达、`PARTIAL` 部分送达、
+  `FAILED` 全部失败或告警配置不可用、`PENDING` 尚未尝试。前端据此显示等待或失败文案。
+- 自动关闭、重启安全关闭和风速联锁反馈也逐会话发送，单个平台失败只记一条大屏告警，
+  不影响其他平台收到反馈。
+- 送达与否都不放宽安全条件：未送达、未确认、过期、身份不匹配或设备版本变化时绝不开启设备。
+
+AstrBot 插件要求 AstrBot 4.18 或更高版本，并声明支持 `weixin_oc`、`aiocqhttp`、
+`qq_official` 和 `qq_official_webhook`。
+在目标 QQ 私聊或群聊中执行 `/sid`（`/agri_control_status` 与 `/agri_query_status`
+无论成功失败也会回显当前 UMO 与 sender ID），将完整 UMO 与 sender ID 分别写入
+`app.astrbot-control.identities`；需要接收主动告警的会话 UMO 另外写入
+`app.prevention-control.alert-umos`。每个私聊、群聊和操作用户均使用独立精确映射，不支持通配符。
+QQ AppSecret、OneBot Token 等适配器凭据仅由 AstrBot 保存，不写入 Rice Ultra 配置。
+私聊会话不涉及“被 @”；群聊只在被 `@` 时回复是 AstrBot 自身的会话唤醒规则，
+取得群聊 UMO 后在 AstrBot WebUI 中按该群聊配置，Rice Ultra 侧不做这项控制。
 
 安全阈值和 AstrBot 主动消息配置位于服务器 `app.prevention-control`，示例见 `conf/config.example.yaml`。
 开关首次初始化值来自 YAML，此后以数据库 `prevention_policy` 为准。

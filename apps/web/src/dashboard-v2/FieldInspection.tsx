@@ -152,7 +152,7 @@ function leafCardCopy(
     return { badge: '失败', title: '识别失败', detail: error, percent: 0 }
   }
   if (!alert?.leafLabel && !alert?.leafLabelZh) {
-    return { badge: '上传识别', title: '点击上传叶片图片', detail: '细菌性叶枯病 / 褐斑病 / 东格鲁病毒将触发红色告警并进入微信确认', percent: 0 }
+    return { badge: '上传识别', title: '点击上传叶片图片', detail: '细菌性叶枯病 / 褐斑病 / 东格鲁病毒将触发红色告警并进入 AstrBot 消息确认', percent: 0 }
   }
   const label = alert.leafLabelZh ?? alert.leafLabel ?? '已识别'
   const confidence = formatConfidence(alert.leafConfidence)
@@ -182,7 +182,7 @@ function pestCardCopy(
     return { badge: '失败', title: '识别失败', detail: error, percent: 0 }
   }
   if (alert?.pestCount == null) {
-    return { badge: '上传识别', title: '点击上传虫害图片', detail: '1 只黄色预警，2 只及以上红色告警并进入微信确认', percent: 0 }
+    return { badge: '上传识别', title: '点击上传虫害图片', detail: '1 只黄色预警，2 只及以上红色告警并进入 AstrBot 消息确认', percent: 0 }
   }
   const count = alert.pestCount
   const label = alert.pestLabel ? ` · ${alert.pestLabel}` : ''

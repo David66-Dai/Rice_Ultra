@@ -306,7 +306,7 @@ public class DiagnosisService {
 		String subject = alertSubject(task, parsed);
 		String linkage = "";
 		if (confirmation != null) {
-			linkage = "；等待 AstrBot 微信确认，确认编号 " + confirmation.getId() + "，未确认不会开启设备";
+			linkage = "；等待 AstrBot 消息确认，确认编号 " + confirmation.getId() + "，未确认不会开启设备";
 		}
 		else if (activatedDevice != null) {
 			linkage = "；已联动开启" + (DeviceCommandService.PUMP.equals(activatedDevice) ? "喷药" : "驱虫灯");

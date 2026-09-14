@@ -6,7 +6,9 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -21,12 +23,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  *
  * <pre>
  *   .\create-user.ps1 -Username zhangsan -Password "Secret#123" -DisplayName "张三"
+ *   .\create-user.ps1 -Username astrbot -DisplayName "AstrBot 机器人" -NoLogin
  *   .\mvnw.cmd -q -DskipTests compile exec:java "-Dexec.args=--username zhangsan --password Secret#123"
  * </pre>
+ *
+ * <p>{@code --no-login} 创建服务账号：{@code enabled=true}、{@code login_enabled=false}，
+ * 不接收密码，库里只落一段谁也不知道的随机 BCrypt 哈希。这类账号只能由服务端按
+ * AstrBot UMO + sender ID 精确映射使用，任何密码或记住登录都进不了网页。</p>
  */
 public final class CreateUserTool {
 
 	private static final PasswordEncoder PASSWORD_ENCODER = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+	private static final SecureRandom RANDOM = new SecureRandom();
 
 	private CreateUserTool() {
 	}
@@ -62,17 +70,19 @@ public final class CreateUserTool {
 					"账号已存在：" + request.username + "。若要改密码或资料，请加 --update / -Update");
 			}
 
-			String hash = PASSWORD_ENCODER.encode(request.password);
+			// 服务账号不接收密码：写入一段随机且不回显的哈希，登录仍由 login_enabled 从逻辑上禁止。
+			String hash = PASSWORD_ENCODER.encode(request.loginEnabled ? request.password : unknowableSecret());
+			String kind = request.loginEnabled ? "" : "，服务账号（禁止网页登录）";
 			if (existingId == null) {
 				insertUser(conn, request, hash);
 				conn.commit();
-				System.out.printf("已创建账号 %s（%s，角色 %s）%n",
-					request.username, request.displayName, request.role);
+				System.out.printf("已创建账号 %s（%s，角色 %s%s）%n",
+					request.username, request.displayName, request.role, kind);
 			} else {
 				updateUser(conn, existingId, request, hash);
 				conn.commit();
-				System.out.printf("已更新账号 %s（%s，角色 %s）%n",
-					request.username, request.displayName, request.role);
+				System.out.printf("已更新账号 %s（%s，角色 %s%s）%n",
+					request.username, request.displayName, request.role, kind);
 			}
 			return 0;
 		}
@@ -91,8 +101,9 @@ public final class CreateUserTool {
 	private static void insertUser(Connection conn, Request request, String hash) throws SQLException {
 		String sql = """
 			INSERT INTO user_account
-			  (username, password_hash, display_name, role, enabled, failed_attempts, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 0, NOW(6), NOW(6))
+			  (username, password_hash, display_name, role, enabled, login_enabled,
+			   failed_attempts, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 0, NOW(6), NOW(6))
 			""";
 		try (PreparedStatement ps = conn.prepareStatement(sql)) {
 			ps.setString(1, request.username);
@@ -100,6 +111,7 @@ public final class CreateUserTool {
 			ps.setString(3, request.displayName);
 			ps.setString(4, request.role);
 			ps.setBoolean(5, request.enabled);
+			ps.setBoolean(6, request.loginEnabled);
 			ps.executeUpdate();
 		}
 	}
@@ -107,7 +119,7 @@ public final class CreateUserTool {
 	private static void updateUser(Connection conn, long id, Request request, String hash) throws SQLException {
 		String sql = """
 			UPDATE user_account
-			SET password_hash = ?, display_name = ?, role = ?, enabled = ?,
+			SET password_hash = ?, display_name = ?, role = ?, enabled = ?, login_enabled = ?,
 			    failed_attempts = 0, locked_until = NULL, updated_at = NOW(6)
 			WHERE id = ?
 			""";
@@ -116,9 +128,17 @@ public final class CreateUserTool {
 			ps.setString(2, request.displayName);
 			ps.setString(3, request.role);
 			ps.setBoolean(4, request.enabled);
-			ps.setLong(5, id);
+			ps.setBoolean(5, request.loginEnabled);
+			ps.setLong(6, id);
 			ps.executeUpdate();
 		}
+	}
+
+	/** 服务账号的占位口令：随机生成、不打印、不返回，落库前立即 BCrypt 哈希。 */
+	private static String unknowableSecret() {
+		byte[] buffer = new byte[48];
+		RANDOM.nextBytes(buffer);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(buffer);
 	}
 
 	private static void printHelp() {
@@ -127,16 +147,22 @@ public final class CreateUserTool {
 
 			用法：
 			  .\\create-user.cmd -Username <账号> [-Password <密码>] [-DisplayName <显示名>] [-Role ADMIN] [-Update] [-Disabled]
+			  .\\create-user.cmd -Username astrbot -DisplayName "AstrBot 机器人" -NoLogin
 			  .\\mvnw.cmd -q -DskipTests compile exec:java "-Dexec.args=--username <账号> --password <密码>"
 
 			参数：
 			  --username, -u       登录名（必填，1–64 字符）
-			  --password, -p       明文密码（必填；也可设环境变量 CREATE_USER_PASSWORD）
+			  --password, -p       明文密码（普通账号必填；也可设环境变量 CREATE_USER_PASSWORD）
 			  --display-name, -n   显示名，默认与账号相同
-			  --role, -r           角色，默认 ADMIN
+			  --role, -r           角色，默认 ADMIN；--no-login 时默认 SERVICE
 			  --update             账号已存在时改为更新密码/资料
-			  --disabled           创建为禁用状态
+			  --disabled           创建为禁用状态（AstrBot 等服务端映射也会一并拒绝）
+			  --no-login           服务账号：保持启用但禁止网页登录，不接受密码
 			  --help, -h           显示本说明
+
+			--no-login 用于 AstrBot 这类只由服务端按 UMO + sender ID 精确映射的账号：
+			enabled 仍为 true（映射仍可用），login_enabled 为 false（密码、记住登录、已有令牌一律拒绝），
+			密码位置只写入一段随机且不回显的 BCrypt 哈希；设备权限仍由 app.devices.control-users 决定。
 
 			配置：从当前目录向上查找 conf/config.yaml；RICE_CONFIG_PATH 可指定文件。
 			支持 --rice.config.path=<文件>、--spring.profiles.active=dev 及 --spring.* 配置覆盖。
@@ -148,10 +174,11 @@ public final class CreateUserTool {
 		boolean help;
 		boolean update;
 		boolean enabled = true;
+		boolean loginEnabled = true;
 		String username;
 		String password;
 		String displayName;
-		String role = "ADMIN";
+		String role;
 		final List<String> configurationArgs = new ArrayList<>();
 
 		static Request parse(String[] args) {
@@ -167,6 +194,7 @@ public final class CreateUserTool {
 					case "--help", "-h" -> req.help = true;
 					case "--update" -> req.update = true;
 					case "--disabled" -> req.enabled = false;
+					case "--no-login" -> req.loginEnabled = false;
 					case "--username", "-u" -> req.username = requireValue(args, ++i, arg);
 					case "--password", "-p" -> req.password = requireValue(args, ++i, arg);
 					case "--display-name", "-n" -> req.displayName = requireValue(args, ++i, arg);
@@ -192,7 +220,7 @@ public final class CreateUserTool {
 						else if (req.displayName == null) {
 							req.displayName = arg;
 						}
-						else if ("ADMIN".equals(req.role)) {
+						else if (req.role == null) {
 							req.role = arg;
 						}
 						else {
@@ -223,6 +251,10 @@ public final class CreateUserTool {
 			if (enabled != null) {
 				req.enabled = Boolean.parseBoolean(enabled);
 			}
+			String loginEnabled = env("CREATE_USER_LOGIN_ENABLED");
+			if (loginEnabled != null) {
+				req.loginEnabled = Boolean.parseBoolean(loginEnabled);
+			}
 			return req;
 		}
 
@@ -239,13 +271,20 @@ public final class CreateUserTool {
 			if (username.chars().anyMatch(Character::isWhitespace)) {
 				throw new IllegalArgumentException("登录名不能包含空白");
 			}
-			if (password == null || password.isEmpty()) {
+			if (!loginEnabled) {
+				// 服务账号没有可用密码：给了密码反而会让人以为能登录，这里直接拒绝。
+				if (password != null && !password.isEmpty()) {
+					throw new IllegalArgumentException("--no-login 服务账号不接受密码，请去掉 --password / -Password");
+				}
+				password = null;
+			}
+			else if (password == null || password.isEmpty()) {
 				throw new IllegalArgumentException("请指定 --password，或设置环境变量 CREATE_USER_PASSWORD");
 			}
-			if (password.length() < 8) {
+			else if (password.length() < 8) {
 				throw new IllegalArgumentException("密码至少 8 位");
 			}
-			if (password.length() > 128) {
+			else if (password.length() > 128) {
 				throw new IllegalArgumentException("密码最长 128 个字符");
 			}
 			if (displayName == null) {
@@ -255,7 +294,7 @@ public final class CreateUserTool {
 				throw new IllegalArgumentException("显示名最长 64 个字符");
 			}
 			if (role == null) {
-				role = "ADMIN";
+				role = loginEnabled ? "ADMIN" : "SERVICE";
 			}
 			role = role.toUpperCase(Locale.ROOT);
 			if (role.length() > 32) {

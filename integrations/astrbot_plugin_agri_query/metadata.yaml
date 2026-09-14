@@ -1,9 +1,12 @@
 name: astrbot_plugin_agri_query
 display_name: Rice Ultra 农业查询
 desc: 通过 Rice Ultra Java API 只读查询病虫害汇总与平台告警
-version: v2.0.0
+version: v2.1.0
 author: danglong
 repo: ""
-astrbot_version: ">=4.5.7,<5"
+astrbot_version: ">=4.18,<5"
 support_platforms:
   - weixin_oc
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook

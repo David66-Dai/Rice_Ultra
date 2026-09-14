@@ -117,7 +117,7 @@ export function NotificationCenter() {
                 </li>)}
               </ol>
             ) : (
-              <div className="notification-empty"><BellIcon size={30} /><strong>{!snapshot ? '正在加载通知' : filter === 'pest_disease' ? '暂无病虫害识别通知' : '暂无通知'}</strong><p>{filter === 'pest_disease' ? '黄色/红色识别、微信确认发送失败和风速联锁异常会在这里展示。' : '设备操作成功后，所有用户都会在这里收到通知。'}</p></div>
+              <div className="notification-empty"><BellIcon size={30} /><strong>{!snapshot ? '正在加载通知' : filter === 'pest_disease' ? '暂无病虫害识别通知' : '暂无通知'}</strong><p>{filter === 'pest_disease' ? '黄色/红色识别、AstrBot 消息告警发送失败和风速联锁异常会在这里展示。' : '设备操作成功后，所有用户都会在这里收到通知。'}</p></div>
             )}
           </div>
           <footer className="notification-panel__footer"><span>展示最近通知</span><button type="button" disabled={!unread || marking || connection !== 'connected'} onClick={handleMarkRead}>{marking ? '正在标记…' : '全部标为已读'}</button></footer>
