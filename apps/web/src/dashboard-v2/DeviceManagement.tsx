@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useDeviceSync } from '../devices/useDeviceSync.ts'
 import { describeError } from '../lib/api.ts'
-import { DEVICE_LABELS, emitDeviceStateChanged } from '../lib/devices.ts'
+import { DEVICE_LABELS } from '../lib/devices.ts'
 import './DeviceManagement.css'
 
 const STATIONS = Array.from({ length: 10 }, (_, index) => ({
@@ -23,11 +23,12 @@ function formatTime(value: string | null | undefined) {
 }
 
 export function DeviceManagement() {
-  const { snapshot, connection, error, controlDevice } = useDeviceSync()
+  const { snapshot, connection, error, controlDevice, setDiagnosisConfirmationRequired } = useDeviceSync()
   const [selectedStationId, setSelectedStationId] = useState('S01')
   const [sending, setSending] = useState<'pump' | 'lamp' | null>(null)
   const sendingRef = useRef(false)
   const [controlError, setControlError] = useState<string | null>(null)
+  const [policySending, setPolicySending] = useState(false)
   const selectedStation = STATIONS.find((station) => station.id === selectedStationId) ?? STATIONS[0]
   const canSend = Boolean(snapshot?.canControl && snapshot.available && connection === 'connected' && selectedStation.configured)
   const syncText = connection === 'connected' ? '实时同步已连接' : connection === 'reconnecting' ? '正在重新连接…' : '正在连接…'
@@ -48,12 +49,24 @@ export function DeviceManagement() {
     setControlError(null)
     try {
       await controlDevice(selectedStation.id, device, enabled)
-      emitDeviceStateChanged()
     } catch (cause) {
       setControlError(describeError(cause))
     } finally {
       sendingRef.current = false
       setSending(null)
+    }
+  }
+
+  async function changeConfirmationPolicy(required: boolean) {
+    if (!snapshot?.canControl || connection !== 'connected' || policySending) return
+    setPolicySending(true)
+    setControlError(null)
+    try {
+      await setDiagnosisConfirmationRequired(required)
+    } catch (cause) {
+      setControlError(describeError(cause))
+    } finally {
+      setPolicySending(false)
     }
   }
 
@@ -92,6 +105,24 @@ export function DeviceManagement() {
           </svg>
           <p>{permissionText}</p>
         </div>
+
+        {snapshot?.preventionPolicy && <section className="prevention-policy" aria-labelledby="prevention-policy-title">
+          <div>
+            <strong id="prevention-policy-title">识别联动微信确认</strong>
+            <p>{snapshot.preventionPolicy.requireAstrBotConfirmation
+              ? '已开启：红色识别先发送 AstrBot 微信告警，收到授权用户确认后才开启防治设备。'
+              : '已关闭：红色识别可直接联动设备，仍执行喷药风速安全校验。'}</p>
+            <small>人工喷药必须有有效红色叶害依据；风速超过 {snapshot.preventionPolicy.maxSprayWindSpeedMs} m/s 将禁止或联锁停止喷药。</small>
+          </div>
+          <label className="prevention-policy__switch">
+            <input type="checkbox"
+              checked={snapshot.preventionPolicy.requireAstrBotConfirmation}
+              disabled={!snapshot.canControl || connection !== 'connected' || policySending}
+              onChange={(event) => { void changeConfirmationPolicy(event.target.checked) }} />
+            <span aria-hidden="true"><i /></span>
+            <em>{policySending ? '保存中' : snapshot.preventionPolicy.requireAstrBotConfirmation ? '已开启' : '已关闭'}</em>
+          </label>
+        </section>}
 
         {selectedStation.configured ? (
           <>

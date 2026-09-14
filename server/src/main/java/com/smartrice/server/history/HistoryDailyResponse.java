@@ -1,5 +1,6 @@
 package com.smartrice.server.history;
 
+import com.smartrice.server.pest.PestDiseaseSummary;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -11,7 +12,8 @@ public record HistoryDailyResponse(
 		LocalDate date,
 		String stationId,
 		EnvironmentAverages environment,
-		PestDiseaseArchive pestDisease,
+		/** Only the current field day carries figures; earlier days come back with empty items. */
+		PestDiseaseSummary pestDisease,
 		SpectralArchive spectrum,
 		String source
 	) {
@@ -30,15 +32,6 @@ public record HistoryDailyResponse(
 		Double soilEcMsCm,
 		Double soilTemperatureC,
 		Double soilMoisturePercent
-	) {
-	}
-
-	public record PestDiseaseArchive(
-		Integer diseaseCount,
-		Double pestDensityPer100Plants,
-		Double affectedAreaPercent,
-		Double riskIndex,
-		Double recognitionConfidencePercent
 	) {
 	}
 

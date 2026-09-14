@@ -120,7 +120,7 @@ public class SecurityConfig {
 				.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.requestMatchers("/api/health", "/api/auth/login", "/api/auth/remember", "/api/auth/logout",
-					"/api/astrbot/devices/**").permitAll()
+					"/api/astrbot/**").permitAll()
 				.requestMatchers("/h2-console/**", "/error").permitAll()
 				.anyRequest().authenticated())
 			.oauth2ResourceServer(rs -> rs

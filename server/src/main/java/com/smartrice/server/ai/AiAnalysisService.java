@@ -48,7 +48,7 @@ public class AiAnalysisService {
 	public boolean configured() { return dify.configured() && reports.configured(); }
 
 	public synchronized AiAnalysisJob submit(String owner, AiAnalysisRequest request) {
-		if (request != null && request.growthStage() == null) request = new AiAnalysisRequest(request.stationId(), request.date(), request.windowDays(), "unknown");
+		if (request != null && request.growthStage() == null) request = new AiAnalysisRequest(request.stationId(), request.date(), request.windowDays(), GrowthStage.UNKNOWN);
 		validate(request);
 		if (closing) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI 服务正在关闭，请稍后重试");
 		if (!configured()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI 工作流或 HDFS 归档尚未配置，请联系管理员完成配置");
@@ -142,8 +142,8 @@ public class AiAnalysisService {
 			|| r.date() == null || r.date().getYear() < 1 || r.date().getYear() > 9999
 			|| r.date().isAfter(LocalDate.now(ZoneId.of("Asia/Shanghai")))
 			|| !Set.of(7, 14, 30).contains(r.windowDays())
-			|| (r.growthStage() != null && !Set.of("unknown", "seedling", "tillering", "jointing", "booting", "heading", "filling", "mature").contains(r.growthStage())))
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择有效站点、日期、分析窗口和生育期");
+			|| (r.growthStage() != null && !GrowthStage.VALID.contains(r.growthStage())))
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择有效站点、日期、分析窗口和生长周期");
 	}
 	@PreDestroy
 	public void close() {

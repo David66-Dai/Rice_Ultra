@@ -15,7 +15,9 @@ public class AstrBotControlProperties {
 	private String apiToken = "";
 	private boolean allowTestControl;
 	private Duration confirmationTtl = Duration.ofMinutes(2);
+	private int defaultSprayDurationSeconds = 60;
 	private int maxDurationSeconds = 300;
+	private int maxQueryRangeDays = 31;
 	private List<IdentityBinding> identities = new ArrayList<>();
 
 	public boolean isEnabled() { return enabled; }
@@ -26,8 +28,14 @@ public class AstrBotControlProperties {
 	public void setAllowTestControl(boolean allowTestControl) { this.allowTestControl = allowTestControl; }
 	public Duration getConfirmationTtl() { return confirmationTtl; }
 	public void setConfirmationTtl(Duration confirmationTtl) { this.confirmationTtl = confirmationTtl; }
+	public int getDefaultSprayDurationSeconds() { return defaultSprayDurationSeconds; }
+	public void setDefaultSprayDurationSeconds(int defaultSprayDurationSeconds) {
+		this.defaultSprayDurationSeconds = defaultSprayDurationSeconds;
+	}
 	public int getMaxDurationSeconds() { return maxDurationSeconds; }
 	public void setMaxDurationSeconds(int maxDurationSeconds) { this.maxDurationSeconds = maxDurationSeconds; }
+	public int getMaxQueryRangeDays() { return maxQueryRangeDays; }
+	public void setMaxQueryRangeDays(int maxQueryRangeDays) { this.maxQueryRangeDays = maxQueryRangeDays; }
 	public List<IdentityBinding> getIdentities() { return identities; }
 	public void setIdentities(List<IdentityBinding> identities) {
 		this.identities = identities == null ? new ArrayList<>() : new ArrayList<>(identities);

@@ -16,10 +16,11 @@ const range = (stationId = 'S01') => ({ stationId, startDate: '2026-01-01', endD
 function evidence(stationId = 'S01', endDate = '2026-01-30'): AiEvidence {
   return {
     stationId, hiveStation: stationId === 'S01' ? 'point_1' : 'point_2', startDate: '2026-01-24', endDate,
-    windowDays: 7, observedDays: 6, missingDates: ['2026-01-25'], rawRowCount: 6, growthStage: 'unknown',
+    windowDays: 7, observedDays: 6, missingDates: ['2026-01-25'], rawRowCount: 6,
+    growthStage: 'unknown', growthStageLabel: null, growthStageSource: 'unknown',
     metrics: [{ field: 'temperature_celsius', label: '温度', unit: '°C', count: 6, missingCount: 1,
       mean: 20, min: 19, max: 22, first: 19, last: 22, change: 3 }],
-    daily: [{ date: endDate, values: { temperature_celsius: 22 } }], limitations: ['生育期未提供'],
+    daily: [{ date: endDate, values: { temperature_celsius: 22 } }], limitations: ['生长周期未提供'],
   }
 }
 function job(status: AiAnalysisJob['status'] = 'queued', id = 'job-fixture'): AiAnalysisJob {
@@ -189,7 +190,7 @@ test('switching during submission prevents late accepted jobs from scheduling po
   const starting = f.session.start()
   const old = f.calls.at(-1)!
   const loading = f.session.load({ ...selection('S01', '2026-01-30'), growthStage: 'tillering' })
-  f.calls.at(-1)!.pending.resolve({ ...evidence(), growthStage: 'tillering' })
+  f.calls.at(-1)!.pending.resolve({ ...evidence(), growthStage: 'tillering', growthStageLabel: '分蘖期', growthStageSource: 'user' })
   await loading
   old.pending.resolve(job())
   await starting
@@ -270,14 +271,14 @@ test('mismatched evidence and job identity never display unrelated results', asy
 test('legacy data remains explicitly dated and unavailable baselines remain empty', async () => {
   const f = fixture()
   const observed = evidence()
-  observed.legacyContext = { source: 'hive_legacy', stationId: 'S01',
-    disease: { available: true, sourceTable: 'pest_data', referenceDate: '2026-01-28', matchType: 'latest_prior',
-      values: [{ field: 'fixture', label: '病害指标', unit: '%', value: '0' }] },
+  observed.legacyContext = { source: 'inspection_and_hive_yield', stationId: 'S01',
+    pestDisease: { available: false, source: 'none', sourceTable: '', stationId: 'S01', referenceDate: '2026-01-30',
+      lastDiagnosedAt: null, recognitionCount: 0, items: [], notes: ['该日期不是当天'] },
     yield: { available: false, sourceTable: 'rice_yield', referenceYear: null, season: '', matchType: 'missing', baselineKgPerMu: null },
     limitations: ['所选年份暂无可用产量基线'],
   }
   await f.ready(true, observed)
-  assert.equal(f.state().evidence?.legacyContext?.disease.referenceDate, '2026-01-28')
+  assert.equal(f.state().evidence?.legacyContext?.pestDisease.referenceDate, '2026-01-30')
   assert.equal(f.state().evidence?.legacyContext?.yield.baselineKgPerMu, null)
   assert.equal(canStartDecision(f.state()), true)
   assert.equal(f.calls.some(call => call.method === 'POST'), false)
@@ -299,7 +300,8 @@ test('saved reports are listed by station, and opening an earlier report adopts 
   const previous = archive()
   previous.date = '2020-02-14'
   previous.windowDays = 14
-  previous.result!.evidence = { ...evidence(), startDate: '2020-02-01', endDate: previous.date, windowDays: 14, growthStage: 'tillering' }
+  previous.result!.evidence = { ...evidence(), startDate: '2020-02-01', endDate: previous.date, windowDays: 14,
+    growthStage: 'tillering', growthStageLabel: '分蘖期', growthStageSource: 'user' }
   const f = fixture({ reports: [{ ...previous, result: null }] })
   await f.ready()
   const listCall = f.calls.find(call => call.path.startsWith('/api/ai/analyses?'))!

@@ -1,6 +1,8 @@
 package com.smartrice.server.realtime;
 
 import com.smartrice.server.astrbot.AstrBotControlController;
+import com.smartrice.server.astrbot.AstrBotAgricultureQueryController;
+import com.smartrice.server.astrbot.AstrBotDiagnosisConfirmationController;
 import com.smartrice.server.notifications.NotificationController;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
@@ -9,7 +11,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice(assignableTypes = {
-	DeviceControlController.class, NotificationController.class, AstrBotControlController.class
+	DeviceControlController.class, NotificationController.class, AstrBotControlController.class,
+	AstrBotAgricultureQueryController.class, AstrBotDiagnosisConfirmationController.class
 })
 public class DeviceExceptionHandler {
 

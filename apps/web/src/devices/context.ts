@@ -3,6 +3,7 @@ import type { DeviceSyncView } from '../lib/device-sync.ts'
 
 export type DeviceSyncContextValue = DeviceSyncView & {
   controlDevice: (stationId: string, device: 'pump' | 'lamp', enabled: boolean) => Promise<void>
+  setDiagnosisConfirmationRequired: (required: boolean) => Promise<void>
   markRead: () => Promise<void>
 }
 

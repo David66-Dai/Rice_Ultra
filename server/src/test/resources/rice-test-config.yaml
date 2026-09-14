@@ -11,6 +11,10 @@ spring:
       ddl-auto: create-drop
     open-in-view: false
 app:
+  prevention-control:
+    require-astrbot-confirmation-default: false
+    spray-safety-enabled: false
+    astrbot-alert-enabled: false
   astrbot-control:
     enabled: false
     api-token: ""

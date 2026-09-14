@@ -18,7 +18,12 @@ public record AiEvidence(
 	int rawRowCount,
 	List<Metric> metrics,
 	List<Day> daily,
+	/** Effective 生长周期 code; see {@link GrowthStage}. */
 	String growthStage,
+	/** Chinese name of the effective stage, or null when it is unknown. */
+	String growthStageLabel,
+	/** {@code hive} when read from farm.env_daily, {@code user} when supplied, else {@code unknown}. */
+	String growthStageSource,
 	List<String> limitations,
 	AiLegacyContext legacyContext
 ) {

@@ -41,13 +41,31 @@ app:
     # 测试命令只跳过聊天端二次确认，仍校验身份映射、账号、设备白名单和状态版本。
     allow-test-control: false
     confirmation-ttl: "2m"
+    # AstrBot 未指定喷药时长时默认 60 秒；显式时长仍受 max-duration-seconds 限制。
+    default-spray-duration-seconds: 60
     max-duration-seconds: 300
+    # AstrBot 农业查询单次日期范围限制。
+    max-query-range-days: 31
     # 同时精确匹配会话 UMO 和发送者 ID，再映射到已有平台登录用户名。
     identities: []
     # identities:
     #   - umo: "从 /agri_control_status 复制"
     #     sender-id: "从 /agri_control_status 复制"
     #     username: "admin"
+  prevention-control:
+    # 首次建库时该值决定“识别联动微信确认”开关；之后以前端保存的数据库值为准。
+    require-astrbot-confirmation-default: true
+    # 喷药开启前必须有新鲜风速；人工喷药还必须有有效红色叶害识别。
+    spray-safety-enabled: true
+    max-spray-wind-speed-m-s: 3.0
+    sensor-max-age: "2m"
+    leaf-evidence-max-age: "24h"
+    diagnosis-confirmation-ttl: "10m"
+    # 主动微信告警沿用 AstrBot /api/v1/im/message；HTTP 仅允许回环地址，远程必须 HTTPS。
+    astrbot-alert-enabled: false
+    astrbot-base-url: "http://127.0.0.1:6185"
+    astrbot-api-key: ""
+    alert-umos: []
   hdfs:
     # WebHDFS（NameNode HTTP 端口）；报告按 point_N/output_yyyyMMdd_HHmm.json 保存。
     web-url: "http://127.0.0.1:9870"
@@ -86,7 +104,8 @@ app:
     serial:
       # 复制示例后按硬件情况开启；dev 模式强制在下文覆盖为 false。
       enabled: false
-      port: "COM4"
+      # 采集器重新枚举时 COM 号会变，按顺序填写候选串口，逗号分隔；程序用第一个能打开的。
+      port: "COM4,COM5"
       baud-rate: 9600
       station-id: "S01"
     weather:

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useDeviceSync } from '../devices/useDeviceSync.ts'
 import { describeError } from '../lib/api.ts'
+import { normalizeDeviceMessage } from '../lib/devices.ts'
 import './NotificationCenter.css'
 
 const FILTERS = [
@@ -94,7 +95,7 @@ export function NotificationCenter() {
         {unread > 0 && <span className="notification-trigger__badge" aria-hidden="true">{unread > 99 ? '99+' : unread}</span>}
         {connection !== 'connected' && <i className="notification-trigger__connection" aria-hidden="true" />}
       </button>
-      <span className="sr-only" role="status" aria-live="polite">{unread > 0 ? `${unread} 条未读通知。${snapshot?.notifications[0]?.message ?? ''}` : ''}</span>
+      <span className="sr-only" role="status" aria-live="polite">{unread > 0 ? `${unread} 条未读通知。${normalizeDeviceMessage(snapshot?.notifications[0]?.message ?? '')}` : ''}</span>
 
       {open && (
         <section id={`${id}-panel`} className="notification-panel" role="dialog" aria-labelledby={`${id}-title`}>
@@ -112,11 +113,11 @@ export function NotificationCenter() {
               <ol className="notification-list">
                 {notifications.map((item) => <li key={item.id} className={`notification-item notification-item--${item.type}`}>
                   <span className="notification-item__icon" aria-hidden="true">{item.type === 'device_control' ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="4" y="4" width="16" height="6" rx="1" /><rect x="4" y="14" width="16" height="6" rx="1" /><path d="M8 7h.01M8 17h.01M12 10v4" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 19C3 9 11 3 20 4c0 10-7 16-15 15Zm0 0 9-9" /></svg>}</span>
-                  <div><p>{item.message}</p><div className="notification-item__meta"><span>{item.type === 'device_control' ? '设备操作' : '病虫害识别'}{item.stationId ? ` · ${item.stationId}` : ''}</span><time dateTime={item.createdAt}>{formatTime(item.createdAt)}</time></div></div>
+                  <div><p>{normalizeDeviceMessage(item.message)}</p><div className="notification-item__meta"><span>{item.type === 'device_control' ? '设备操作' : '病虫害识别'}{item.stationId ? ` · ${item.stationId}` : ''}</span><time dateTime={item.createdAt}>{formatTime(item.createdAt)}</time></div></div>
                 </li>)}
               </ol>
             ) : (
-              <div className="notification-empty"><BellIcon size={30} /><strong>{!snapshot ? '正在加载通知' : filter === 'pest_disease' ? '暂无病虫害识别通知' : '暂无通知'}</strong><p>{filter === 'pest_disease' ? '已预留病虫害识别通知，接入识别结果后将在这里展示。' : '设备操作成功后，所有用户都会在这里收到通知。'}</p></div>
+              <div className="notification-empty"><BellIcon size={30} /><strong>{!snapshot ? '正在加载通知' : filter === 'pest_disease' ? '暂无病虫害识别通知' : '暂无通知'}</strong><p>{filter === 'pest_disease' ? '黄色/红色识别、微信确认发送失败和风速联锁异常会在这里展示。' : '设备操作成功后，所有用户都会在这里收到通知。'}</p></div>
             )}
           </div>
           <footer className="notification-panel__footer"><span>展示最近通知</span><button type="button" disabled={!unread || marking || connection !== 'connected'} onClick={handleMarkRead}>{marking ? '正在标记…' : '全部标为已读'}</button></footer>

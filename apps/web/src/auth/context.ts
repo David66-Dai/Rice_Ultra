@@ -8,7 +8,13 @@ export type AuthState =
   | { status: 'anonymous'; user: null; accessToken: null; via: null }
   | { status: 'authenticated'; user: UserInfo; accessToken: string; via: LoginVia }
 
-export type RequestOptions = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; signal?: AbortSignal }
+export type RequestOptions = {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  body?: unknown
+  signal?: AbortSignal
+  /** 'blob' 用于取摄像头快照等二进制响应 */
+  responseType?: 'json' | 'blob'
+}
 
 export type AuthContextValue = AuthState & {
   /** 上次勾选“记住密码”保存的账号，用于回填 */

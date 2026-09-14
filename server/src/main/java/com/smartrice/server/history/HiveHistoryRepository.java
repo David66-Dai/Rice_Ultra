@@ -20,19 +20,22 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class HiveHistoryRepository {
 
-	private static final String TABLE = "agri_env_data";
+	private static final String TABLE = "farm.env_daily";
 	private static final String STATION_FILTER = "trim(`station`) = ?";
-	private static final String DAY = "to_date(trim(`date`))";
+	// `date` is this table's partition column and is already stored as YYYY-MM-DD, so the bounds are
+	// compared against the raw column: wrapping it in to_date would hide the partition from Hive and
+	// turn every lookup into a full scan. readDate still rejects any value that is not a padded date.
+	private static final String DAY = "`date`";
 	// Projection/filter queries avoid launching a cluster aggregation for each UI interaction.
 	static final String RANGE_SQL = "SELECT " + DAY + " AS record_date FROM " + TABLE
-		+ " WHERE " + STATION_FILTER + " AND " + DAY + " <= CAST(? AS DATE)";
+		+ " WHERE " + STATION_FILTER + " AND " + DAY + " <= ?";
 	private static final List<String> METRICS = List.of("light_lux", "temperature_celsius", "humidity_percent",
 		"wind_speed_m_s", "soil_temperature_celsius", "soil_moisture_percent", "ph",
 		"electrical_conductivity_ds_m", "nitrogen_concentration_ppm", "phosphorus_concentration_ppm",
 		"potassium_concentration_ppm");
 	static final String DAILY_SQL = "SELECT " + DAY + " AS record_date, " + String.join(", ", METRICS)
 		+ " FROM " + TABLE + " WHERE " + STATION_FILTER
-		+ " AND " + DAY + " IN (CAST(? AS DATE), CAST(? AS DATE))";
+		+ " AND " + DAY + " IN (?, ?)";
 
 	private final HiveConnectionFactory connections;
 

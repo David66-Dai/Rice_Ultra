@@ -142,6 +142,29 @@
 .device-permission svg { flex-shrink: 0; }
 .device-permission p { margin: 0; font-size: 12px; line-height: 1.7; }
 
+.prevention-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 20px;
+  border-bottom: 1px solid rgba(69, 208, 247, 0.14);
+  background: rgba(12, 58, 91, 0.38);
+}
+
+.prevention-policy strong { color: #d8f4fa; font-size: 13px; }
+.prevention-policy p { margin: 4px 0 0; color: #99becb; font-size: 11px; line-height: 1.6; }
+.prevention-policy small { display: block; margin-top: 3px; color: #d7bd7d; font-size: 10px; }
+.prevention-policy__switch { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; cursor: pointer; }
+.prevention-policy__switch input { position: absolute; opacity: 0; pointer-events: none; }
+.prevention-policy__switch span { position: relative; width: 38px; height: 20px; border: 1px solid #657883; border-radius: 12px; background: #183449; transition: 180ms ease; }
+.prevention-policy__switch span i { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #8798a1; transition: 180ms ease; }
+.prevention-policy__switch input:checked + span { border-color: #4ed9ba; background: rgba(45, 177, 146, 0.3); }
+.prevention-policy__switch input:checked + span i { left: 21px; background: #61efc9; box-shadow: 0 0 7px rgba(97, 239, 201, 0.7); }
+.prevention-policy__switch input:focus-visible + span { outline: 2px solid #56ddff; outline-offset: 2px; }
+.prevention-policy__switch input:disabled + span { opacity: 0.5; }
+.prevention-policy__switch em { min-width: 34px; color: #a6c4cd; font-size: 10px; font-style: normal; }
+
 .device-grid {
   display: grid;
   flex: 1;

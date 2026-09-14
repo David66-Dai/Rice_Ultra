@@ -12,6 +12,8 @@ public record AstrBotDeviceSnapshot(
 	List<DeviceState> devices,
 	boolean testControlAllowed,
 	long confirmationTtlSeconds,
+	int defaultSprayDurationSeconds,
+	boolean indefiniteLampAllowed,
 	int maxDurationSeconds
 ) {
 }

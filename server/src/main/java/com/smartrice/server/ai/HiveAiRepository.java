@@ -13,7 +13,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.springframework.stereotype.Repository;
 
 /** Bounded, read-only projection queries; all grouping happens locally, never in a Hive cluster job. */
@@ -33,11 +35,15 @@ public class HiveAiRepository {
 		new MetricDefinition("phosphorus_concentration_ppm", "磷浓度", "ppm"),
 		new MetricDefinition("potassium_concentration_ppm", "钾浓度", "ppm")
 	);
-	private static final String DAY = "to_date(trim(`date`))";
-	static final String WINDOW_SQL = "SELECT " + DAY + " AS record_date, "
+	static final String TABLE = "farm.env_daily";
+	static final String GROWTH_STAGE = "growth_stage";
+	// `date` partitions this table and already holds YYYY-MM-DD, so the window bounds compare against
+	// the raw column; a to_date wrapper would hide the partition and scan every day ever recorded.
+	private static final String DAY = "`date`";
+	static final String WINDOW_SQL = "SELECT " + DAY + " AS record_date, " + GROWTH_STAGE + ", "
 		+ String.join(", ", FIELDS.stream().map(MetricDefinition::field).toList())
-		+ " FROM agri_env_data WHERE trim(`station`) = ? AND " + DAY + " >= CAST(? AS DATE)"
-		+ " AND " + DAY + " <= CAST(? AS DATE) LIMIT " + MAX_RAW_ROWS;
+		+ " FROM " + TABLE + " WHERE trim(`station`) = ? AND " + DAY + " >= ?"
+		+ " AND " + DAY + " <= ? LIMIT " + MAX_RAW_ROWS;
 
 	private final HiveConnectionFactory connections;
 
@@ -60,6 +66,8 @@ public class HiveAiRepository {
 			statement.setString(3, end.toString());
 			try (ResultSet rows = statement.executeQuery()) {
 				Map<LocalDate, Map<String, Average>> totals = new TreeMap<>();
+				Map<LocalDate, String> stages = new TreeMap<>();
+				Set<LocalDate> conflictingStages = new TreeSet<>();
 				int count = 0;
 				while (rows.next()) {
 					if (Thread.currentThread().isInterrupted()) throw new SQLException("Observation query interrupted", "57014");
@@ -67,6 +75,13 @@ public class HiveAiRepository {
 					LocalDate day = readDate(rows);
 					if (day.isBefore(start) || day.isAfter(end)) {
 						throw new SQLException("Hive returned a date outside the requested window", "22007");
+					}
+					String stage = rows.getString(GROWTH_STAGE);
+					stage = stage == null || stage.isBlank() ? null : stage.trim();
+					if (stage != null) {
+						String seen = stages.putIfAbsent(day, stage);
+						// Repeated rows for one day must not let an arbitrary stage win.
+						if (seen != null && !seen.equals(stage)) conflictingStages.add(day);
 					}
 					Map<String, Average> metrics = totals.computeIfAbsent(day, key -> new LinkedHashMap<>());
 					for (MetricDefinition definition : FIELDS) {
@@ -85,7 +100,8 @@ public class HiveAiRepository {
 					}
 					daily.put(entry.getKey(), Collections.unmodifiableMap(values));
 				}
-				return new WindowRows(count, Collections.unmodifiableMap(daily));
+				conflictingStages.forEach(stages::remove);
+				return new WindowRows(count, Collections.unmodifiableMap(daily), Collections.unmodifiableMap(stages));
 			}
 		}
 	}
@@ -117,7 +133,9 @@ public class HiveAiRepository {
 		}
 	}
 
-	public record WindowRows(int rawRowCount, Map<LocalDate, Map<String, Double>> daily) {
+	/** {@code growthStages} only holds days whose rows agreed on a single non-blank stage. */
+	public record WindowRows(int rawRowCount, Map<LocalDate, Map<String, Double>> daily,
+		Map<LocalDate, String> growthStages) {
 	}
 
 	public record MetricDefinition(String field, String label, String unit) {

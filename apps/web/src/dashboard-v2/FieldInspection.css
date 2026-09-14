@@ -461,6 +461,227 @@
   cursor: pointer;
 }
 
+.camera-screen > video.is-hidden {
+  display: none;
+}
+
+.camera-screen > img.is-error {
+  visibility: hidden;
+}
+
+.camera-network {
+  border-top: 1px solid rgba(70, 210, 249, 0.12);
+}
+
+.camera-network__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+}
+
+.camera-network__head > div > span {
+  display: block;
+  color: #488fa9;
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 7px;
+  letter-spacing: 0.22em;
+}
+
+.camera-network__head > div > strong {
+  color: #d5f2ff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.camera-network button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(73, 222, 255, 0.32);
+  color: #cdeef5;
+  background: rgba(11, 51, 91, 0.9);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.camera-network button:hover:not(:disabled) {
+  border-color: rgba(91, 236, 255, 0.8);
+  background: rgba(28, 112, 168, 0.7);
+}
+
+.camera-network button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.camera-network button.is-primary {
+  border-color: rgba(73, 222, 255, 0.6);
+  color: #e6fbff;
+  background: rgba(18, 82, 128, 0.8);
+}
+
+.camera-network button.is-ghost {
+  border-color: rgba(255, 140, 120, 0.35);
+  color: #ffb4a8;
+}
+
+.camera-network__body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0 14px 12px;
+}
+
+.camera-network__scan,
+.camera-network__manual {
+  display: grid;
+  align-items: end;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto;
+}
+
+.camera-network__manual {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+}
+
+.camera-network label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: #628fa1;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.camera-network input,
+.camera-network select {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(66, 199, 236, 0.24);
+  border-radius: 0;
+  color: #cdeef5;
+  background: #0b335b;
+  font-size: 11px;
+  outline: none;
+}
+
+.camera-network input:focus,
+.camera-network select:focus {
+  border-color: rgba(73, 222, 255, 0.65);
+  box-shadow: 0 0 0 2px rgba(55, 214, 250, 0.08);
+}
+
+.camera-network__scan button,
+.camera-network__manual button {
+  height: 30px;
+}
+
+.camera-network__progress {
+  position: relative;
+  height: 16px;
+  border: 1px solid rgba(66, 199, 236, 0.2);
+  background: rgba(6, 32, 58, 0.8);
+}
+
+.camera-network__progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, rgba(38, 166, 222, 0.5), rgba(73, 222, 255, 0.65));
+  transition: width 0.2s linear;
+}
+
+.camera-network__progress span {
+  position: relative;
+  display: block;
+  color: #d5f2ff;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  line-height: 16px;
+  text-align: center;
+}
+
+.camera-network__error,
+.camera-network__summary,
+.camera-network__tip {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.camera-network__error {
+  color: #ffb4a8;
+}
+
+.camera-network__summary {
+  color: #7fd8b6;
+}
+
+.camera-network__tip {
+  color: #628fa1;
+}
+
+.camera-network__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.camera-network__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(66, 199, 236, 0.18);
+  background: rgba(8, 40, 72, 0.55);
+}
+
+.camera-network__list li.is-active {
+  border-color: rgba(73, 222, 255, 0.55);
+  box-shadow: inset 2px 0 0 #49deff;
+}
+
+.camera-network__list li > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.camera-network__list strong {
+  display: block;
+  color: #d5f2ff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.camera-network__list small {
+  display: block;
+  overflow: hidden;
+  color: #628fa1;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-network__unmatched {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #8fc3d6;
+  font-size: 11px;
+}
+
+.camera-network__unmatched > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .camera-controls__status {
   min-width: 90px;
 }
@@ -840,6 +1061,15 @@ button.recognition-card {
 
   .camera-controls__status {
     display: none;
+  }
+
+  .camera-network__scan,
+  .camera-network__manual {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .camera-network__list li {
+    flex-wrap: wrap;
   }
 
   .recognition-list {

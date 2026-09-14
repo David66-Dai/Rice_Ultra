@@ -1,4 +1,4 @@
-import type { DeviceControlRequest, DeviceControlResponse, DeviceSyncResponse } from '@smart-rice-security/shared'
+import type { DeviceControlRequest, DeviceControlResponse, DeviceSyncResponse, PreventionPolicyState, PreventionPolicyUpdateRequest } from '@smart-rice-security/shared'
 
 export type DeviceConnection = 'connecting' | 'connected' | 'reconnecting'
 export type DeviceSyncView = {
@@ -104,6 +104,16 @@ export function createDeviceSyncSession(request: Request, emit: (view: DeviceSyn
       } finally {
         controlling = false
       }
+    },
+    async setDiagnosisConfirmationRequired(required: boolean) {
+      const snapshot = view.snapshot
+      if (view.connection !== 'connected' || !snapshot) throw new Error('防治策略尚未同步，请等待连接恢复')
+      if (!snapshot.canControl) throw new Error('当前账号没有防治策略修改权限')
+      const body: PreventionPolicyUpdateRequest = {
+        requireAstrBotConfirmation: required,
+        expectedRevision: snapshot.preventionPolicy.revision,
+      }
+      await mutate<PreventionPolicyState>('/api/devices/prevention-policy', body)
     },
     async markRead() {
       const throughId = Math.max(0, ...view.snapshot?.notifications.map(item => item.id) ?? [])

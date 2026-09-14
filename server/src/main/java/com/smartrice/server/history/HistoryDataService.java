@@ -1,9 +1,12 @@
 package com.smartrice.server.history;
 
 import com.smartrice.server.history.HistoryDailyResponse.HistoryDayData;
+import com.smartrice.server.pest.PestDiseaseService;
+import com.smartrice.server.pest.PestDiseaseSummary;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -19,9 +22,11 @@ public class HistoryDataService {
 	private static final Pattern STATION_ID = Pattern.compile("S(?:0[1-9]|10)");
 	private static final ZoneId FIELD_ZONE = ZoneId.of("Asia/Shanghai");
 	private final HiveHistoryRepository repository;
+	private final PestDiseaseService pestDiseases;
 
-	public HistoryDataService(HiveHistoryRepository repository) {
+	public HistoryDataService(HiveHistoryRepository repository, PestDiseaseService pestDiseases) {
 		this.repository = repository;
+		this.pestDiseases = pestDiseases;
 	}
 
 	public HistoryRangeResponse range(String stationId) {
@@ -43,10 +48,23 @@ public class HistoryDataService {
 			Map<LocalDate, HistoryDayData> days = repository.days(station, date);
 			HistoryDayData current = days.get(date);
 			if (current == null) throw notFound(station, date);
-			return new HistoryDailyResponse(current, days.get(date.minusDays(1)));
+			return new HistoryDailyResponse(withPestDisease(current, station, date), days.get(date.minusDays(1)));
 		} catch (SQLException ex) {
 			throw unavailable(ex);
 		}
+	}
+
+	/** An unavailable pest source degrades that one card; the environment archive still returns. */
+	private HistoryDayData withPestDisease(HistoryDayData day, String station, LocalDate date) {
+		PestDiseaseSummary summary;
+		try {
+			summary = pestDiseases.daily(station, date);
+		} catch (RuntimeException ex) {
+			log.warn("病虫害数据读取失败，站点={}，日期={}", station, date);
+			summary = PestDiseaseSummary.empty("unavailable", "", station, date,
+				List.of("病虫害数据源暂不可用，环境归档仍可查看。"));
+		}
+		return new HistoryDayData(day.date(), day.stationId(), day.environment(), summary, day.spectrum(), day.source());
 	}
 
 	private static String validateStation(String stationId) {

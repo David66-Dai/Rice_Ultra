@@ -33,6 +33,12 @@ public class DeviceControlController {
 		return activity.control(jwt, request);
 	}
 
+	@PostMapping("/prevention-policy")
+	public PreventionPolicyState preventionPolicy(@AuthenticationPrincipal Jwt jwt,
+			@Valid @RequestBody PreventionPolicyUpdateRequest request) {
+		return activity.updatePreventionPolicy(jwt, request);
+	}
+
 	/** Shared authenticated snapshot used by the permission-aware UI and AstrBot adapter. */
 	@GetMapping("/sync")
 	public DeferredResult<DeviceSyncResponse> sync(@AuthenticationPrincipal Jwt jwt,

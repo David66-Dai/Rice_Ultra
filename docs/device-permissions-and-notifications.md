@@ -40,21 +40,39 @@ app:
 “全部已读”通过 `POST /api/notifications/read` 的 `throughId` 标记已看到的消息，
 不会把该请求之后才产生的新消息误标为已读，也不影响其他账号。
 
-病虫害识别已预留 `pest_disease` 通知类型与可信后端发送入口
-`DeviceActivityService.publishPestDisease(stationId, message)`。
-后续识别流程在取得真实结果后调用该入口，即可复用存储、广播、未读计数与前端分类。
-当前不会产生模拟识别警报，也没有向普通客户端开放任意广播接口。
+病虫害识别取得黄色或红色结果后，会在识别记录提交成功后发布 `pest_disease` 通知，复用同一套
+持久化、长轮询广播、未读计数和前端分类。红色结果尝试联动设备后，告警会同时写明联动成功或失败；
+绿色结果不制造告警。普通客户端没有任意广播接口。
 
 ## AstrBot 接入
 
 新版插件位于 `integrations/astrbot_plugin_agri_control`，安装包为同目录旁的 ZIP。
-Java 只开放受限的 `/api/astrbot/devices/sync` 与 `/api/astrbot/devices/control`，
+Java 开放受限的 `/api/astrbot/devices/*` 与只读 `/api/astrbot/agriculture/*`，
 使用独立令牌并在服务器端把 UMO + sender ID 精确映射到平台登录用户名。
 机器人传入的用户名不参与授权；每次请求都会复查账号启用状态和 `control-users`。
 
-普通机器人开启先生成二次确认编号，确认前不发送指令；停止立即执行。
+普通机器人开启先生成二次确认编号，确认前不发送指令；停止立即执行。喷药未指定时长默认 60 秒，
+驱虫灯未指定时长则保持开启；用户显式指定时长仍受后端上限约束。
 显式 `/agri_test` 可在服务器和插件双开关都开启时跳过二次确认，但不会跳过账号权限、
 设备版本、串口可用性、时长限制或自动关闭。完整安装与命令说明见插件目录的 `README.md`。
+
+旧项目农业查询插件已迁移到 `integrations/astrbot_plugin_agri_query`。它保留原工具名，但改由 Java
+后端读取当前巡检与 Hive 归档，不再把 MySQL 账号密码放进 AstrBot。
+
+## 识别联动确认与喷药联锁
+
+- “设备管理”的“识别联动微信确认”开关持久化到数据库，并通过设备长轮询同步到全部在线页面。
+- 开关开启时，红色识别只生成确认单并主动发送 AstrBot 微信告警；未送达、未确认、过期、身份不符
+  或设备版本变化都不会开启设备。确认接口仍复用 UMO + sender ID 到平台账号的严格映射。
+- 喷药开启前读取最新实时风速，数据缺失、无效、过期或高于配置阈值时拒绝开启。
+- 网页和普通 AstrBot 人工喷药还必须有配置时限内的最新红色叶害识别；识别确认单自身绑定原始红色依据。
+- 喷药运行中每次新风速入库后都会检查阈值；超限通过统一设备通道发送停止、记录操作者
+  `wind_safety`、广播大屏状态。停止失败会产生告警，并在后续超限样本到达时再次检查。
+- 个人微信会压平单条文本内的换行，因此确认告警拆为连续的摘要、设备、确认编号和说明消息；
+  定时自动关闭、重启安全关闭和风速联锁结果会主动通知告警 UMO。
+
+安全阈值和 AstrBot 主动消息配置位于服务器 `app.prevention-control`，示例见 `conf/config.example.yaml`。
+开关首次初始化值来自 YAML，此后以数据库 `prevention_policy` 为准。
 
 首次部署需确保通知及已读表已经建立。当前开发配置的 Hibernate `ddl-auto: update`
 会创建新增表；手动管理数据库结构的部署请执行
@@ -63,12 +81,13 @@ Java 只开放受限的 `/api/astrbot/devices/sync` 与 `/api/astrbot/devices/co
 ## 验证边界
 
 自动化测试采用 H2 内存数据库与模拟串口，覆盖权限拒绝、并发版本冲突、通知广播、
-按账号已读隔离、失败处理及前端重连/取消竞态。测试不连接实际水泵、驱虫灯或生产数据库。
+按账号已读隔离、失败处理及前端重连/取消竞态。测试不连接实际喷药设备、驱虫灯或生产数据库。
 
-相关检查：`npm run test:devices --workspace=@smart-rice-security/web`（18 项）、
-AstrBot 插件离线测试（33 项）、Java AstrBot 专项测试（8 项）和 `npm run web:build`。
-完整后端离线回归共 146 项：140 项通过，6 项需要真实外部服务的检查按开关跳过，无失败。
-当前 AstrBot 安装包 SHA-256 为
-`077C4A009DF6034B0EDE08D2289C81F64E461FCCEFF9ED106EAE3A81FC073E87`。
+相关检查：`npm run test:devices --workspace=@smart-rice-security/web`（24 项）、前端告警测试（4 项）、
+AstrBot 控制插件离线测试（43 项）、Java AstrBot 专项测试（12 项）、喷药安全测试（3 项）和
+`npm run web:build`。完整后端离线回归共 190 项：184 项通过，6 项需要真实外部服务的检查按开关跳过，无失败。
+当前 AstrBot 控制安装包 SHA-256 为
+`648FF602615F95CE3B8ED63E356392983B83F214AEDC4D7FBEE50B3AD573745B`；农业查询安装包为
+`21651F2ABA55D9754E5CB6AC7F468EED9F82AB77083BD4033F47D3EEB8E0496B`。
 另已通过两个模拟账号的浏览器联动检查，确认只读按钮、无刷新状态更新、通知内容、
 各账号已读隔离与病虫害通知空态。该检查使用独立模拟服务，不代表真实硬件执行验证。

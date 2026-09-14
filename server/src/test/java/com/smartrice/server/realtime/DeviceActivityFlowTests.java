@@ -106,7 +106,7 @@ class DeviceActivityFlowTests {
 		JsonNode viewerSnapshot = snapshot(viewerToken);
 		assertThat(viewerSnapshot.path("canControl").asBoolean()).isFalse();
 		assertThat(viewerSnapshot.path("devices").get(0).path("enabled").asBoolean()).isEqualTo(payload.get("enabled"));
-		assertThat(viewerSnapshot.path("notifications").get(0).path("message").asText()).contains("操作员甲（operator）用户", "智能灌溉水泵功能");
+		assertThat(viewerSnapshot.path("notifications").get(0).path("message").asText()).contains("操作员甲（operator）用户", "智能喷药功能");
 		assertThat(viewerSnapshot.path("notifications").get(0).path("actorUsername").asText()).isEqualTo("operator");
 		assertThat(viewerSnapshot.path("unreadCount").asInt()).isEqualTo(1);
 		verify(serial).sendCommand(Boolean.TRUE.equals(payload.get("enabled")) ? 0x01 : 0x03);

@@ -17,6 +17,9 @@ public record DiagnosisResponse(
 	Instant createdAt,
 	Map<String, Object> result,
 	String activatedDevice,
-	String deviceError
+	String deviceError,
+	boolean confirmationRequired,
+	String pendingConfirmationId,
+	String alertDeliveryStatus
 ) {
 }

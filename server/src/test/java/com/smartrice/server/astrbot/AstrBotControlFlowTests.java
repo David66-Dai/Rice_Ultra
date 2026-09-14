@@ -74,6 +74,7 @@ class AstrBotControlFlowTests {
 		astrBot.setEnabled(true);
 		astrBot.setApiToken(TOKEN);
 		astrBot.setAllowTestControl(false);
+		astrBot.setDefaultSprayDurationSeconds(60);
 		astrBot.setMaxDurationSeconds(300);
 		astrBot.setIdentities(List.of(binding("umo:test", "sender-1", "operator")));
 	}
@@ -86,6 +87,8 @@ class AstrBotControlFlowTests {
 			.andExpect(jsonPath("$.username").value("operator"))
 			.andExpect(jsonPath("$.canControl").value(true))
 			.andExpect(jsonPath("$.devices.length()").value(2))
+			.andExpect(jsonPath("$.defaultSprayDurationSeconds").value(60))
+			.andExpect(jsonPath("$.indefiniteLampAllowed").value(true))
 			.andExpect(jsonPath("$.notifications").doesNotExist());
 		verify(serial, never()).sendCommand(anyInt());
 	}
@@ -116,11 +119,11 @@ class AstrBotControlFlowTests {
 	@Test
 	void normalStartRequiresConfirmationThenBroadcastsAsMappedPlatformUser() throws Exception {
 		JsonNode snapshot = syncJson();
-		Map<String, Object> pending = command(snapshot, true, false, false, "打开水泵 5 秒");
+		Map<String, Object> pending = command(snapshot, true, false, false, "打开喷药 5 秒");
 		mvc.perform(control(pending)).andExpect(status().isConflict());
 		verify(serial, never()).sendCommand(anyInt());
 
-		Map<String, Object> confirmed = command(snapshot, true, true, false, "确认打开水泵 5 秒");
+		Map<String, Object> confirmed = command(snapshot, true, true, false, "确认打开喷药 5 秒");
 		mvc.perform(control(confirmed)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.username").value("operator"))
 			.andExpect(jsonPath("$.testMode").value(false))
@@ -134,13 +137,13 @@ class AstrBotControlFlowTests {
 		JsonNode web = webSnapshot(viewerToken);
 		assertThat(web.path("devices").get(0).path("enabled").asBoolean()).isTrue();
 		assertThat(web.path("notifications").get(0).path("message").asText())
-			.contains("机器人操作员（operator）用户开启智能灌溉水泵功能");
+			.contains("机器人操作员（operator）用户开启智能喷药功能");
 	}
 
 	@Test
 	void explicitTestCanSkipConfirmationOnlyWhenServerSwitchIsEnabled() throws Exception {
 		JsonNode snapshot = syncJson();
-		Map<String, Object> command = command(snapshot, true, false, true, "/agri_test 水泵 1");
+		Map<String, Object> command = command(snapshot, true, false, true, "/agri_test 喷药 1");
 		mvc.perform(control(command)).andExpect(status().isForbidden());
 		verify(serial, never()).sendCommand(anyInt());
 		astrBot.setAllowTestControl(true);
@@ -156,8 +159,8 @@ class AstrBotControlFlowTests {
 	void testFlagWithoutExplicitTextAndStopWithTestFlagAreRejected() throws Exception {
 		astrBot.setAllowTestControl(true);
 		JsonNode snapshot = syncJson();
-		mvc.perform(control(command(snapshot, true, false, true, "打开水泵"))).andExpect(status().isBadRequest());
-		mvc.perform(control(command(snapshot, false, false, true, "/agri_test 停止水泵"))).andExpect(status().isBadRequest());
+		mvc.perform(control(command(snapshot, true, false, true, "打开喷药"))).andExpect(status().isBadRequest());
+		mvc.perform(control(command(snapshot, false, false, true, "/agri_test 停止喷药"))).andExpect(status().isBadRequest());
 		verify(serial, never()).sendCommand(anyInt());
 	}
 
@@ -171,6 +174,28 @@ class AstrBotControlFlowTests {
 		changed.put("device", "lamp");
 		mvc.perform(control(changed)).andExpect(status().isConflict());
 		verify(serial).sendCommand(0x01);
+	}
+
+	@Test
+	void lampCanStayOnWithoutTimerWhileSprayStillRequiresDuration() throws Exception {
+		JsonNode snapshot = syncJson();
+		Map<String, Object> lamp = command(snapshot, true, true, false, "确认一直开启驱虫灯");
+		lamp.put("device", "lamp");
+		lamp.put("expectedRevision", snapshot.path("devices").get(1).path("revision").asLong());
+		lamp.remove("durationSeconds");
+		mvc.perform(control(lamp)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.autoOffAt").value(org.hamcrest.Matchers.nullValue()))
+			.andExpect(jsonPath("$.control.device").value("lamp"))
+			.andExpect(jsonPath("$.control.state.enabled").value(true));
+		assertThat(stops.findAll()).singleElement()
+			.satisfies(stop -> assertThat(stop.getStatus()).isEqualTo("INDEFINITE"));
+		verify(serial).sendCommand(0x02);
+		verify(serial, never()).sendCommand(0x04);
+
+		Map<String, Object> spray = command(syncJson(), true, true, false, "确认开启喷药");
+		spray.remove("durationSeconds");
+		mvc.perform(control(spray)).andExpect(status().isBadRequest());
+		verify(serial, never()).sendCommand(0x01);
 	}
 
 	private UserAccount account(String username, String displayName) {

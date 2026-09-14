@@ -42,7 +42,10 @@ class HiveAiRepositoryTests {
 		assertThat(target.get("phosphorus_concentration_ppm")).isNull();
 		assertThat(target.get("potassium_concentration_ppm")).isNull();
 		assertThat(HiveAiRepository.WINDOW_SQL).doesNotContainIgnoringCase("group by")
-			.doesNotContainIgnoringCase("avg(").contains("LIMIT 100000");
+			.doesNotContainIgnoringCase("avg(").contains("LIMIT 100000")
+			.contains("farm.env_daily").contains("growth_stage")
+			// The partition column stays bare so Hive can prune instead of scanning every day.
+			.doesNotContainIgnoringCase("to_date(").doesNotContainIgnoringCase("cast(");
 		verify(fixture.statement).setString(1, "point_10");
 		verify(fixture.statement).setString(2, "2020-01-01");
 		verify(fixture.statement).setString(3, "2020-01-07");
@@ -119,6 +122,11 @@ class HiveAiRepositoryTests {
 		final HiveAiRepository repository = new HiveAiRepository(connections);
 
 		Fixture(List<String> dates, List<Map<String, Double>> samples) throws Exception {
+			this(dates, samples, List.of());
+		}
+
+		/** {@code stages} lines up with {@code dates}; a shorter list leaves the rest without a stage. */
+		Fixture(List<String> dates, List<Map<String, Double>> samples, List<String> stages) throws Exception {
 			when(connections.open()).thenReturn(connection);
 			when(connections.queryTimeoutSeconds()).thenReturn(30);
 			when(connection.prepareStatement(HiveAiRepository.WINDOW_SQL)).thenReturn(statement);
@@ -127,6 +135,8 @@ class HiveAiRepositoryTests {
 			var wasNull = new AtomicBoolean();
 			when(rows.next()).thenAnswer(call -> index.incrementAndGet() < dates.size());
 			when(rows.getString("record_date")).thenAnswer(call -> dates.get(index.get()));
+			when(rows.getString(HiveAiRepository.GROWTH_STAGE))
+				.thenAnswer(call -> index.get() < stages.size() ? stages.get(index.get()) : null);
 			when(rows.getDouble(anyString())).thenAnswer(call -> {
 				Double value = samples.get(index.get()).get(call.getArgument(0, String.class));
 				wasNull.set(value == null);

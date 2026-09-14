@@ -46,6 +46,10 @@ class FakeClient:
         self.calls.append(("describe", args, kwargs))
         return {"ok": True, "mapped_username": "operator"}
 
+    async def confirm_diagnosis(self, *args, **kwargs):
+        self.calls.append(("confirm_diagnosis", args, kwargs))
+        return {"ok": True, "status": "confirmed"}
+
 
 class FakeEvent:
     unified_msg_origin = "platform:GroupMessage:session-4"
@@ -128,6 +132,7 @@ def assert_identity(actual):
     ("confirm_agri_device", ("abc123",), "confirm", {}),
     ("stop_agri_device", ("lamp", "S01"), "stop", {}),
     ("query_agri_control", ("request-id",), "query", {}),
+    ("confirm_diagnosis_control", ("00000000-0000-4000-8000-000000000099",), "confirm_diagnosis", {}),
     ("test_agri_device", ("lamp", 5, "S01"), "start", {"test": True}),
 ])
 def test_llm_tools_forward_server_identity_only(wrapper, method, args, client_method, kwargs):
@@ -150,6 +155,7 @@ def test_llm_tools_forward_server_identity_only(wrapper, method, args, client_me
     ("agri_confirm", ("abc123",), "confirm", {}),
     ("agri_stop", ("all", "S01"), "stop", {}),
     ("agri_result", ("request-id",), "query", {}),
+    ("agri_confirm_alert", ("00000000-0000-4000-8000-000000000099",), "confirm_diagnosis", {}),
     ("agri_test", ("pump", 5, "S01"), "start", {"test": True}),
 ])
 def test_direct_commands_use_same_client_and_identity(wrapper, method, args, client_method, kwargs):
@@ -160,7 +166,8 @@ def test_direct_commands_use_same_client_and_identity(wrapper, method, args, cli
 
     result = asyncio.run(collect())
     assert len(result) == 1 and result[0][0] == "plain"
-    assert json.loads(result[0][1])["ok"] is True
+    assert result[0][1]
+    assert not result[0][1].lstrip().startswith("{")
     called, forwarded, actual_kwargs = plugin.client.calls[0]
     assert called == client_method
     assert_identity(forwarded[0])
@@ -182,6 +189,20 @@ def test_tool_arguments_cannot_override_identity_or_credentials(wrapper):
     for name in (
         "start_agri_device", "confirm_agri_device", "stop_agri_device",
         "query_agri_control", "test_agri_device",
+        "confirm_diagnosis_control",
     ):
         parameters = inspect.signature(getattr(wrapper.AgriControlPlugin, name)).parameters
         assert not {"umo", "sender_id", "message_id", "api_token", "api_base", "username"}.intersection(parameters)
+
+
+def test_direct_confirmation_is_rendered_as_human_readable_text(wrapper):
+    plugin = wrapper.AgriControlPlugin(object(), {})
+
+    async def collect():
+        return [item async for item in plugin.agri_confirm_alert(
+            FakeEvent(), "00000000-0000-4000-8000-000000000099"
+        )]
+
+    text = asyncio.run(collect())[0][1]
+    assert "微信告警已确认" in text
+    assert "{" not in text

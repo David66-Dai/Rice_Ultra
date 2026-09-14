@@ -278,7 +278,7 @@ export function HomePage() {
                   </dd>
                 </div>
                 <div>
-                  <dt>当前生育期</dt>
+                  <dt>当前生长周期</dt>
                   <dd>{plot.stage}</dd>
                 </div>
                 <div>

@@ -27,6 +27,8 @@ type RequestOptions = {
   body?: unknown
   token?: string | null
   signal?: AbortSignal
+  /** 'blob' 用于取图片等二进制响应，错误体仍按 JSON 解析 */
+  responseType?: 'json' | 'blob'
 }
 
 function isFormData(body: unknown): body is FormData {
@@ -40,7 +42,8 @@ function encodeBody(body: unknown): BodyInit | undefined {
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const wantsBlob = options.responseType === 'blob'
+  const headers: Record<string, string> = { Accept: wantsBlob ? 'image/*,application/json' : 'application/json' }
   const form = isFormData(options.body)
   if (options.body !== undefined && !form) headers['Content-Type'] = 'application/json'
   if (options.token) headers.Authorization = `Bearer ${options.token}`
@@ -58,18 +61,18 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     throw new NetworkError()
   }
 
-  const text = await response.text()
-  const data: unknown = text ? parseJson(text) : null
-
   if (!response.ok) {
-    const body = (data ?? {}) as Partial<ApiErrorBody>
+    const body = (parseJson(await response.text()) ?? {}) as Partial<ApiErrorBody>
     throw new ApiError(
       response.status,
       body.code ?? 'http_error',
       body.message ?? `请求失败（HTTP ${response.status}）`,
     )
   }
-  return data as T
+  if (wantsBlob) return await response.blob() as T
+
+  const text = await response.text()
+  return (text ? parseJson(text) : null) as T
 }
 
 function parseJson(text: string): unknown {
