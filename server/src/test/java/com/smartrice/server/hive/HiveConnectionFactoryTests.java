@@ -3,6 +3,9 @@ package com.smartrice.server.hive;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.sql.Connection;
@@ -63,9 +66,68 @@ class HiveConnectionFactoryTests {
 			return connection;
 		})) {
 			assertThat(factory.queryTimeoutSeconds()).isEqualTo(30);
-			assertThat(factory.open()).isSameAs(connection);
+			Connection opened = factory.open();
 			assertThat(calls.get()).isEqualTo(1);
 			verifyNoInteractions(connection);
+			// close() returns the session to the pool, so the next caller reuses it instead of reopening.
+			opened.close();
+			verify(connection, never()).close();
+			factory.open().close();
+			assertThat(calls.get()).isEqualTo(1);
+		}
+		verify(connection).close();
+	}
+
+	@Test
+	@SuppressWarnings("resource")
+	void poolSizeZeroEndsEachSessionAndOpensAFreshOneEveryTime() throws Exception {
+		HiveProperties properties = configured();
+		properties.setPoolSize(0);
+		Connection connection = mock(Connection.class);
+		AtomicInteger calls = new AtomicInteger();
+		try (HiveConnectionFactory factory = new HiveConnectionFactory(properties, (url, credentials) -> {
+			calls.incrementAndGet();
+			return connection;
+		})) {
+			factory.open().close();
+			factory.open().close();
+			assertThat(calls.get()).isEqualTo(2);
+			verify(connection, times(2)).close();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("resource")
+	void aSessionIdleBeyondTheConfiguredLimitIsEndedRatherThanHandedOutAgain() throws Exception {
+		HiveProperties properties = configured();
+		properties.setPoolIdleSeconds(0);
+		Connection stale = mock(Connection.class);
+		Connection fresh = mock(Connection.class);
+		AtomicInteger calls = new AtomicInteger();
+		try (HiveConnectionFactory factory = new HiveConnectionFactory(properties,
+			(url, credentials) -> calls.incrementAndGet() == 1 ? stale : fresh)) {
+			factory.open().close();
+			Connection reopened = factory.open();
+			assertThat(calls.get()).isEqualTo(2);
+			verify(stale).close();
+			reopened.close();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("resource")
+	void aReturnedConnectionReportsItselfClosedAndRefusesFurtherUse() throws Exception {
+		HiveProperties properties = configured();
+		Connection connection = mock(Connection.class);
+		try (HiveConnectionFactory factory = new HiveConnectionFactory(properties, (url, credentials) -> connection)) {
+			Connection opened = factory.open();
+			opened.close();
+			assertThat(opened.isClosed()).isTrue();
+			assertThatThrownBy(opened::createStatement).isInstanceOf(SQLException.class);
+			// A second close must not pool the same session twice.
+			opened.close();
+			factory.open().close();
+			assertThat(factory.open()).isNotNull();
 		}
 	}
 

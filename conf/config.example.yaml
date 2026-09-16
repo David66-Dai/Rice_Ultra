@@ -99,6 +99,10 @@ app:
     password: ""
     query-timeout-seconds: 30
     socket-timeout-ms: 45000
+    # 复用空闲 HiveServer2 会话，省掉每次查询约 50-360ms 的建连开销；0 表示每次新建。
+    pool-size: 4
+    # 空闲超过该秒数的会话重新建立，避免拿到已被服务端回收的会话。
+    pool-idle-seconds: 300
   inference:
     host: "127.0.0.1"
     port: 8001

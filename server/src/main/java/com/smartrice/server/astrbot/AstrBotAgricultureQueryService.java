@@ -13,6 +13,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -86,7 +87,7 @@ public class AstrBotAgricultureQueryService {
 		List<InspectionDiagnosis> selected = rows.stream().limit(MAX_ALERTS).toList();
 		Set<Long> published = selected.isEmpty() ? Set.of()
 			: notifications.findByTypeAndSourceIdIn("pest_disease",
-				selected.stream().map(InspectionDiagnosis::getId).toList()).stream()
+				selected.stream().map(diagnosis -> Objects.requireNonNull(diagnosis).getId()).toList()).stream()
 				.map(item -> item.getSourceId()).collect(java.util.stream.Collectors.toSet());
 		List<AlertItem> alerts = selected.stream().map(row -> alert(row, published.contains(row.getId()))).toList();
 		return new AstrBotAlertQueryResponse(user.getUsername(), station, start, end,

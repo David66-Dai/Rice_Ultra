@@ -2,22 +2,42 @@ package com.smartrice.server.hive;
 
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** Opens an independent HiveServer2 session on demand; callers must close it. */
+/**
+ * Hands out a HiveServer2 session on demand; callers must close it.
+ *
+ * <p>Opening one costs about 360ms cold and 50ms warm, which every query used to pay. Closing a
+ * connection now returns the session to a small idle pool instead of ending it, so only the first
+ * caller pays. Sessions idle past {@code app.hive.pool-idle-seconds} are reopened rather than reused.
+ */
 @Component
 public class HiveConnectionFactory implements AutoCloseable {
 
+	private static final int MAX_POOL_SIZE = 32;
+	private static final int MAX_POOL_IDLE_SECONDS = 3600;
 	private final HiveProperties properties;
 	private final ConnectionOpener opener;
+	private final Deque<Idle> idle = new ArrayDeque<>();
 	private IsolatedHiveDriver isolatedDriver;
 	private boolean closed;
+
+	private record Idle(Connection connection, long idleSinceNanos) {
+	}
 
 	@Autowired
 	public HiveConnectionFactory(HiveProperties properties) {
@@ -29,7 +49,61 @@ public class HiveConnectionFactory implements AutoCloseable {
 		this.opener = opener;
 	}
 
-	public synchronized Connection open() throws SQLException {
+	public Connection open() throws SQLException {
+		Connection reused = borrow();
+		return guard(reused == null ? create() : reused);
+	}
+
+	/** Most recently returned session first: it is the one least likely to have been recycled server side. */
+	private synchronized Connection borrow() throws SQLException {
+		if (closed) {
+			throw new SQLException("Hive 连接工厂已关闭。", "08003");
+		}
+		long limit = poolIdleNanos();
+		while (!idle.isEmpty()) {
+			Idle candidate = idle.pollLast();
+			if (System.nanoTime() - candidate.idleSinceNanos() <= limit) {
+				return candidate.connection();
+			}
+			discard(candidate.connection());
+		}
+		return null;
+	}
+
+	private void release(Connection connection) {
+		boolean pooled;
+		synchronized (this) {
+			pooled = !closed && idle.size() < poolCapacity();
+			if (pooled) {
+				idle.addLast(new Idle(connection, System.nanoTime()));
+			}
+		}
+		if (!pooled) {
+			discard(connection);
+		}
+	}
+
+	private static void discard(Connection connection) {
+		try {
+			connection.close();
+		}
+		catch (SQLException ignored) {
+			// A session that cannot be ended cleanly is already unusable; nothing is logged.
+		}
+	}
+
+	// Out-of-range values disable pooling instead of failing every query: a misconfigured pool must not
+	// be able to take the whole Hive integration down.
+	private int poolCapacity() {
+		return Math.max(0, Math.min(properties.getPoolSize(), MAX_POOL_SIZE));
+	}
+
+	private long poolIdleNanos() {
+		int seconds = properties.getPoolIdleSeconds();
+		return TimeUnit.SECONDS.toNanos(seconds <= 0 ? 0 : Math.min(seconds, MAX_POOL_IDLE_SECONDS));
+	}
+
+	private synchronized Connection create() throws SQLException {
 		if (closed) {
 			throw new SQLException("Hive 连接工厂已关闭。", "08003");
 		}
@@ -52,13 +126,71 @@ public class HiveConnectionFactory implements AutoCloseable {
 		}
 	}
 
+	/** Returns a session to the pool on close(); every other call goes straight to the real connection. */
+	private Connection guard(Connection delegate) {
+		return (Connection) Proxy.newProxyInstance(ClassLoader.getPlatformClassLoader(),
+			new Class<?>[] {Connection.class}, new PooledConnection(delegate));
+	}
+
+	private final class PooledConnection implements InvocationHandler {
+
+		private final Connection delegate;
+		private boolean returned;
+
+		PooledConnection(Connection delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
+			if (method.getDeclaringClass() == Object.class) {
+				return switch (method.getName()) {
+					case "equals" -> proxy == arguments[0];
+					case "hashCode" -> System.identityHashCode(proxy);
+					case "toString" -> "Pooled Hive connection";
+					default -> throw new IllegalStateException("Unsupported object method");
+				};
+			}
+			boolean noArguments = method.getParameterCount() == 0;
+			if (noArguments && "close".equals(method.getName())) {
+				// Idempotent: try-with-resources plus an explicit close must not pool one session twice.
+				if (!returned) {
+					returned = true;
+					release(delegate);
+				}
+				return null;
+			}
+			if (noArguments && "isClosed".equals(method.getName()) && returned) {
+				return Boolean.TRUE;
+			}
+			if (returned) {
+				throw new SQLException("Hive 连接已归还连接池，请重新获取。", "08003");
+			}
+			try {
+				return method.invoke(delegate, arguments);
+			}
+			catch (InvocationTargetException ex) {
+				throw ex.getCause();
+			}
+		}
+	}
+
 	@Override
 	@PreDestroy
-	public synchronized void close() throws IOException {
-		closed = true;
-		if (isolatedDriver != null) {
-			isolatedDriver.close();
-			isolatedDriver = null;
+	public void close() throws IOException {
+		List<Connection> pending;
+		synchronized (this) {
+			closed = true;
+			pending = idle.stream().map(Idle::connection).toList();
+			idle.clear();
+		}
+		// Ending sessions outside the lock keeps a stalled HiveServer2 from blocking shutdown of the rest.
+		pending.forEach(HiveConnectionFactory::discard);
+		synchronized (this) {
+			if (isolatedDriver != null) {
+				isolatedDriver.close();
+				isolatedDriver = null;
+			}
 		}
 	}
 

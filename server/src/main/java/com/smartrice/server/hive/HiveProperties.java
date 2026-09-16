@@ -13,6 +13,10 @@ public class HiveProperties {
 	private String password = "";
 	private int queryTimeoutSeconds = 30;
 	private int socketTimeoutMs = 45_000;
+	/** Idle HiveServer2 sessions kept for reuse; 0 restores one fresh session per query. */
+	private int poolSize = 4;
+	/** A session idle beyond this is reopened rather than reused, so a recycled session is never handed out. */
+	private int poolIdleSeconds = 300;
 
 	public String getUrl() {
 		return url;
@@ -52,5 +56,21 @@ public class HiveProperties {
 
 	public void setSocketTimeoutMs(int socketTimeoutMs) {
 		this.socketTimeoutMs = socketTimeoutMs;
+	}
+
+	public int getPoolSize() {
+		return poolSize;
+	}
+
+	public void setPoolSize(int poolSize) {
+		this.poolSize = poolSize;
+	}
+
+	public int getPoolIdleSeconds() {
+		return poolIdleSeconds;
+	}
+
+	public void setPoolIdleSeconds(int poolIdleSeconds) {
+		this.poolIdleSeconds = poolIdleSeconds;
 	}
 }
