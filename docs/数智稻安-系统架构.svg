@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#061A1A"/><stop offset="0.58" stop-color="#092925"/><stop offset="1" stop-color="#10352A"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#54DEA0"/><stop offset="1" stop-color="#C9F064"/></linearGradient>
+    <pattern id="grid" width="52" height="52" patternUnits="userSpaceOnUse"><path d="M52 0H0V52" fill="none" stroke="#B0F1D2" stroke-opacity="0.035"/></pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#000" flood-opacity="0.28"/></filter>
+    <marker id="greenArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#4AD697"/></marker>
+    <marker id="purpleArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#A18FFF"/></marker>
+    <marker id="orangeArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#FFB34D"/></marker>
+    <style>
+      .cn{font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif}.title{font-size:50px;font-weight:800;fill:#F6FFF9;letter-spacing:2px}.subtitle{font-size:21px;font-weight:600;fill:#AFCEC0}.layer{font-size:22px;font-weight:800;fill:#E8FFF3}.painTitle{font-size:25px;font-weight:800;fill:#FFFFFF}.painBody{font-size:19px;font-weight:500;fill:#D3E1DB}.panelTitle{font-size:25px;font-weight:800;fill:#F4FFF8}.moduleTitle{font-size:23px;font-weight:800;fill:#F5FFF9}.body{font-size:18px;font-weight:600;fill:#BAD0C7}.standard{font-size:18px;font-weight:700;fill:#D8F5E8}.tech{font-size:20px;font-weight:800;fill:#E7FFF3}.tag{font-size:18px;font-weight:900;fill:#FFFFFF}.footer{font-size:19px;font-weight:700;fill:#BDE1D1}
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/><rect width="1920" height="1080" fill="url(#grid)"/>
+
+  <!-- 标题 -->
+  <g class="cn">
+    <rect x="60" y="34" width="9" height="70" rx="5" fill="url(#accent)"/>
+    <text x="92" y="78" class="title">数智稻安-系统架构</text>
+    <text x="94" y="110" class="subtitle">围绕早期识别、精准防控与弱网回传构建的智能植保闭环</text>
+    <rect x="1472" y="47" width="350" height="48" rx="24" fill="#143F35" stroke="#397561"/>
+    <text x="1647" y="78" text-anchor="middle" class="cn standard">标准遵循 · 设计对齐</text>
+  </g>
+
+  <!-- 三项核心痛点 -->
+  <g class="cn">
+    <text x="54" y="189" class="layer">核心痛点</text>
+    <g transform="translate(230 130)" filter="url(#shadow)">
+      <rect width="505" height="122" rx="20" fill="#25203F" stroke="#7566BF" stroke-width="2"/>
+      <rect x="22" y="23" width="62" height="62" rx="18" fill="#59499A"/><text x="53" y="62" text-anchor="middle" class="tag">P1</text>
+      <text x="105" y="48" class="painTitle">病害早期识别难</text>
+      <text x="105" y="81" class="painBody">难以捕捉潜育期隐性胁迫</text>
+      <text x="105" y="107" class="painBody">人工发现晚，种质风险高</text>
+    </g>
+    <g transform="translate(757 130)" filter="url(#shadow)">
+      <rect width="505" height="122" rx="20" fill="#3B2B1D" stroke="#A66E31" stroke-width="2"/>
+      <rect x="22" y="23" width="62" height="62" rx="18" fill="#8B551E"/><text x="53" y="62" text-anchor="middle" class="tag">P2</text>
+      <text x="105" y="48" class="painTitle">精准防控难</text>
+      <text x="105" y="81" class="painBody">抗病能力弱，缺少量化诊断</text>
+      <text x="105" y="107" class="painBody">针对性管控手段不足</text>
+    </g>
+    <g transform="translate(1284 130)" filter="url(#shadow)">
+      <rect width="536" height="122" rx="20" fill="#123744" stroke="#348EAA" stroke-width="2"/>
+      <rect x="22" y="23" width="62" height="62" rx="18" fill="#236D86"/><text x="53" y="62" text-anchor="middle" class="tag">P3</text>
+      <text x="105" y="48" class="painTitle">田间弱网传输难</text>
+      <text x="105" y="81" class="painBody">现场网络波动，数据回传不稳</text>
+      <text x="105" y="107" class="painBody">限制智能植保连续运行</text>
+    </g>
+  </g>
+
+  <!-- 左侧分层轴 -->
+  <g class="cn">
+    <line x1="195" y1="283" x2="195" y2="954" stroke="#4B7767" stroke-width="2"/>
+    <g><circle cx="195" cy="329" r="6" fill="#56DBA1"/><text x="48" y="336" class="layer">用户接入层</text></g>
+    <g><circle cx="195" cy="432" r="6" fill="#56DBA1"/><text x="48" y="439" class="layer">接口安全层</text></g>
+    <g><circle cx="195" cy="577" r="6" fill="#56DBA1"/><text x="48" y="584" class="layer">业务服务层</text></g>
+    <g><circle cx="195" cy="759" r="6" fill="#56DBA1"/><text x="48" y="766" class="layer">智能数据层</text></g>
+    <g><circle cx="195" cy="899" r="6" fill="#56DBA1"/><text x="48" y="906" class="layer">田间感知层</text></g>
+  </g>
+
+  <!-- 用户接入层 -->
+  <g class="cn" transform="translate(230 276)" filter="url(#shadow)">
+    <rect width="1590" height="88" rx="19" fill="#10342E" stroke="#31705B" stroke-width="2"/>
+    <text x="28" y="38" class="panelTitle">运营管理 Web 大屏</text><text x="28" y="68" class="body">监测 · 巡检 · 预警 · 决策 · 控制</text>
+    <line x1="455" y1="18" x2="455" y2="70" stroke="#3C695A"/>
+    <text x="500" y="38" class="panelTitle">AstrBot 智能交互</text><text x="500" y="68" class="body">微信 / QQ 查询、告警与确认</text>
+    <rect x="1115" y="20" width="445" height="49" rx="24" fill="#17483B"/>
+    <text x="1338" y="51" text-anchor="middle" class="standard">标准对齐：GB/T 37668-2019</text>
+  </g>
+  <path d="M1025 364V382" fill="none" stroke="#4AD697" stroke-width="3" marker-end="url(#greenArrow)"/>
+
+  <!-- 接口安全层 -->
+  <g class="cn" transform="translate(230 382)" filter="url(#shadow)">
+    <rect width="1590" height="92" rx="19" fill="#16483A" stroke="#419072" stroke-width="2"/>
+    <text x="28" y="41" class="panelTitle">Spring Boot 统一业务 API</text><text x="28" y="72" class="body">JWT 鉴权 · 账号锁定 · 控制白名单 · 服务端密钥边界</text>
+    <rect x="1085" y="21" width="475" height="50" rx="25" fill="#1C5A48"/>
+    <text x="1323" y="53" text-anchor="middle" class="standard">标准对齐：GB/T 22239-2019</text>
+  </g>
+  <path d="M1025 474V492" fill="none" stroke="#4AD697" stroke-width="3" marker-end="url(#greenArrow)"/>
+
+  <!-- 业务服务层：痛点与能力直接对应 -->
+  <g class="cn" filter="url(#shadow)">
+    <rect x="230" y="492" width="1590" height="177" rx="21" fill="#0D2B29" stroke="#2F6757" stroke-width="2"/>
+    <text x="255" y="529" class="panelTitle">核心业务闭环</text>
+    <text x="1792" y="529" text-anchor="end" class="standard">标准对齐：GB/T 44985.1-2024 · NY/T 3501-2019</text>
+
+    <g transform="translate(252 546)"><rect width="370" height="101" rx="17" fill="#153B34" stroke="#34705D"/><text x="24" y="41" class="moduleTitle">田间监测与溯源</text><text x="24" y="75" class="body">实时监测 · 历史数据</text></g>
+    <g transform="translate(642 546)"><rect width="370" height="101" rx="17" fill="#123743" stroke="#348EAA"/><rect x="288" y="17" width="58" height="38" rx="19" fill="#236D86"/><text x="317" y="43" text-anchor="middle" class="tag">P3</text><text x="24" y="41" class="moduleTitle">弱网可靠回传</text><text x="24" y="75" class="body">本地落盘 · 队列 · 重试</text></g>
+    <g transform="translate(1032 546)"><rect width="370" height="101" rx="17" fill="#25203F" stroke="#7566BF"/><rect x="288" y="17" width="58" height="38" rx="19" fill="#59499A"/><text x="317" y="43" text-anchor="middle" class="tag">P1</text><text x="24" y="41" class="moduleTitle">多模态早期识别</text><text x="24" y="75" class="body">RGB + 高光谱隐性胁迫</text></g>
+    <g transform="translate(1422 546)"><rect width="374" height="101" rx="17" fill="#3B2B1D" stroke="#A66E31"/><rect x="292" y="17" width="58" height="38" rx="19" fill="#8B551E"/><text x="321" y="43" text-anchor="middle" class="tag">P2</text><text x="24" y="41" class="moduleTitle">量化防控决策</text><text x="24" y="75" class="body">风险分级 · 策略 · 安全联锁</text></g>
+  </g>
+  <g fill="none" stroke-width="3"><path d="M1025 669V686H620V698" stroke="#A18FFF" marker-end="url(#purpleArrow)"/><path d="M1025 669V686H1420V698" stroke="#4AD697" marker-end="url(#greenArrow)"/></g>
+
+  <!-- 智能数据层 -->
+  <g class="cn" filter="url(#shadow)">
+    <g transform="translate(230 699)">
+      <rect width="775" height="136" rx="20" fill="#1F1D39" stroke="#6B5EAA" stroke-width="2"/>
+      <text x="24" y="39" class="panelTitle">算法智能</text>
+      <text x="24" y="76" class="moduleTitle">病虫视觉识别 · 高光谱诊断 · Dify 决策</text>
+      <text x="24" y="112" class="standard">标准对齐：GB/T 43782-2024</text>
+    </g>
+    <g transform="translate(1025 699)">
+      <rect width="795" height="136" rx="20" fill="#10322E" stroke="#36745F" stroke-width="2"/>
+      <text x="24" y="39" class="panelTitle">数据底座</text>
+      <text x="24" y="76" class="moduleTitle">业务事务 · 实时同步 · 历史分析 · 报告归档</text>
+      <text x="24" y="112" class="standard">标准对齐：NY/T 4261-2022</text>
+    </g>
+  </g>
+
+  <!-- 感知上行与控制下行 -->
+  <g fill="none" stroke-width="3">
+    <path d="M740 854V835" stroke="#4AD697" marker-end="url(#greenArrow)"/>
+    <path d="M1370 854V835" stroke="#4AD697" marker-end="url(#greenArrow)"/>
+    <path d="M1610 647V675H1850V900H1818" stroke="#FFB34D" stroke-dasharray="8 7" marker-end="url(#orangeArrow)"/>
+  </g>
+
+  <!-- 田间感知层 -->
+  <g class="cn" transform="translate(230 854)" filter="url(#shadow)">
+    <rect width="1590" height="99" rx="20" fill="#10342E" stroke="#32715C" stroke-width="2"/>
+    <text x="26" y="41" class="panelTitle">串口传感器　｜　网络摄像头 / 高光谱设备　｜　外部气象　｜　智能喷药 / 驱虫灯</text>
+    <text x="26" y="76" class="standard">标准对齐：GB/T 44985.1-2024 · GB/T 43440-2023</text>
+  </g>
+
+  <!-- 关键技术集中展示，取消各处技术小字 -->
+  <g class="cn" transform="translate(230 974)" filter="url(#shadow)">
+    <rect width="1590" height="70" rx="20" fill="#143F35" stroke="#41816A" stroke-width="2"/>
+    <text x="28" y="44" class="tech">关键技术：</text>
+    <text x="150" y="44" class="footer">高光谱隐性胁迫识别　｜　多模态病虫诊断　｜　本地事务缓存与断点重传　｜　大模型量化决策　｜　风速联锁与自动停止</text>
+  </g>
+</svg>
