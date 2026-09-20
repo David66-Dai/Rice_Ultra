@@ -98,7 +98,7 @@ export function buildHyperspectralReading(
   return {
     polyline,
     label: '等待上传立方体',
-    detail: '核心识别 · .h5 / .zip · 1D-CNN · 点击右侧光环上传',
+    detail: '',
     confidence: 0,
     ariaLabel: '尚未上传高光谱立方体',
   }

@@ -1,0 +1,364 @@
+{
+  "stationId": "S03",
+  "hiveStation": "point_3",
+  "startDate": "2026-09-09",
+  "endDate": "2026-09-15",
+  "windowDays": 7,
+  "observedDays": 6,
+  "missingDates": [
+    "2026-09-12"
+  ],
+  "rawRowCount": 9,
+  "metrics": [
+    {
+      "field": "light_lux",
+      "label": "光照强度",
+      "unit": "lux",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 20366.666667,
+      "min": 9800.0,
+      "max": 31200.0,
+      "first": 28500.0,
+      "last": 9800.0,
+      "change": -18700.0
+    },
+    {
+      "field": "temperature_celsius",
+      "label": "空气温度",
+      "unit": "℃",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 26.016667,
+      "min": 23.7,
+      "max": 28.1,
+      "first": 27.4,
+      "last": 23.7,
+      "change": -3.7
+    },
+    {
+      "field": "humidity_percent",
+      "label": "空气湿度",
+      "unit": "%",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 86.5,
+      "min": 79.0,
+      "max": 93.0,
+      "first": 82.0,
+      "last": 93.0,
+      "change": 11.0
+    },
+    {
+      "field": "wind_speed_m_s",
+      "label": "风速",
+      "unit": "m/s",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 1.283333,
+      "min": 0.6,
+      "max": 2.1,
+      "first": 1.6,
+      "last": 0.6,
+      "change": -1.0
+    },
+    {
+      "field": "soil_temperature_celsius",
+      "label": "土壤温度",
+      "unit": "℃",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 25.233333,
+      "min": 24.2,
+      "max": 26.3,
+      "first": 25.8,
+      "last": 24.2,
+      "change": -1.6
+    },
+    {
+      "field": "soil_moisture_percent",
+      "label": "土壤湿度",
+      "unit": "%",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 67.266667,
+      "min": 60.1,
+      "max": 74.6,
+      "first": 62.5,
+      "last": 74.6,
+      "change": 12.1
+    },
+    {
+      "field": "ph",
+      "label": "土壤酸碱度",
+      "unit": "pH",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 6.263333,
+      "min": 6.18,
+      "max": 6.35,
+      "first": 6.35,
+      "last": 6.18,
+      "change": -0.17
+    },
+    {
+      "field": "electrical_conductivity_ds_m",
+      "label": "土壤电导率",
+      "unit": "dS/m",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 0.578333,
+      "min": 0.51,
+      "max": 0.65,
+      "first": 0.62,
+      "last": 0.51,
+      "change": -0.11
+    },
+    {
+      "field": "nitrogen_concentration_ppm",
+      "label": "氮浓度",
+      "unit": "ppm",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 22.516667,
+      "min": 20.7,
+      "max": 24.5,
+      "first": 24.5,
+      "last": 20.7,
+      "change": -3.8
+    },
+    {
+      "field": "phosphorus_concentration_ppm",
+      "label": "磷浓度",
+      "unit": "ppm",
+      "count": 4,
+      "missingCount": 3,
+      "mean": 11.75,
+      "min": 11.2,
+      "max": 12.4,
+      "first": 12.4,
+      "last": null,
+      "change": null
+    },
+    {
+      "field": "potassium_concentration_ppm",
+      "label": "钾浓度",
+      "unit": "ppm",
+      "count": 6,
+      "missingCount": 1,
+      "mean": 83.033333,
+      "min": 80.4,
+      "max": 86.2,
+      "first": 86.2,
+      "last": 80.4,
+      "change": -5.8
+    }
+  ],
+  "daily": [
+    {
+      "date": "2026-09-09",
+      "values": {
+        "light_lux": 28500.0,
+        "temperature_celsius": 27.4,
+        "humidity_percent": 82.0,
+        "wind_speed_m_s": 1.6,
+        "soil_temperature_celsius": 25.8,
+        "soil_moisture_percent": 62.5,
+        "ph": 6.35,
+        "electrical_conductivity_ds_m": 0.62,
+        "nitrogen_concentration_ppm": 24.5,
+        "phosphorus_concentration_ppm": 12.4,
+        "potassium_concentration_ppm": 86.2
+      }
+    },
+    {
+      "date": "2026-09-10",
+      "values": {
+        "light_lux": 31200.0,
+        "temperature_celsius": 28.1,
+        "humidity_percent": 79.0,
+        "wind_speed_m_s": 2.1,
+        "soil_temperature_celsius": 26.3,
+        "soil_moisture_percent": 60.1,
+        "ph": 6.32,
+        "electrical_conductivity_ds_m": 0.65,
+        "nitrogen_concentration_ppm": 23.8,
+        "phosphorus_concentration_ppm": null,
+        "potassium_concentration_ppm": 84.7
+      }
+    },
+    {
+      "date": "2026-09-11",
+      "values": {
+        "light_lux": 18700.0,
+        "temperature_celsius": 26.2,
+        "humidity_percent": 88.0,
+        "wind_speed_m_s": 1.2,
+        "soil_temperature_celsius": 25.4,
+        "soil_moisture_percent": 66.8,
+        "ph": 6.28,
+        "electrical_conductivity_ds_m": 0.58,
+        "nitrogen_concentration_ppm": 22.6,
+        "phosphorus_concentration_ppm": 11.8,
+        "potassium_concentration_ppm": 83.1
+      }
+    },
+    {
+      "date": "2026-09-12",
+      "values": {
+        "light_lux": null,
+        "temperature_celsius": null,
+        "humidity_percent": null,
+        "wind_speed_m_s": null,
+        "soil_temperature_celsius": null,
+        "soil_moisture_percent": null,
+        "ph": null,
+        "electrical_conductivity_ds_m": null,
+        "nitrogen_concentration_ppm": null,
+        "phosphorus_concentration_ppm": null,
+        "potassium_concentration_ppm": null
+      }
+    },
+    {
+      "date": "2026-09-13",
+      "values": {
+        "light_lux": 12400.0,
+        "temperature_celsius": 24.8,
+        "humidity_percent": 91.0,
+        "wind_speed_m_s": 0.8,
+        "soil_temperature_celsius": 24.6,
+        "soil_moisture_percent": 71.2,
+        "ph": 6.21,
+        "electrical_conductivity_ds_m": 0.54,
+        "nitrogen_concentration_ppm": 21.4,
+        "phosphorus_concentration_ppm": 11.2,
+        "potassium_concentration_ppm": 81.5
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "values": {
+        "light_lux": 21600.0,
+        "temperature_celsius": 25.9,
+        "humidity_percent": 86.0,
+        "wind_speed_m_s": 1.4,
+        "soil_temperature_celsius": 25.1,
+        "soil_moisture_percent": 68.4,
+        "ph": 6.24,
+        "electrical_conductivity_ds_m": 0.57,
+        "nitrogen_concentration_ppm": 22.1,
+        "phosphorus_concentration_ppm": 11.6,
+        "potassium_concentration_ppm": 82.3
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "values": {
+        "light_lux": 9800.0,
+        "temperature_celsius": 23.7,
+        "humidity_percent": 93.0,
+        "wind_speed_m_s": 0.6,
+        "soil_temperature_celsius": 24.2,
+        "soil_moisture_percent": 74.6,
+        "ph": 6.18,
+        "electrical_conductivity_ds_m": 0.51,
+        "nitrogen_concentration_ppm": 20.7,
+        "phosphorus_concentration_ppm": null,
+        "potassium_concentration_ppm": 80.4
+      }
+    }
+  ],
+  "growthStage": "booting",
+  "growthStageLabel": "孕穗期",
+  "growthStageSource": "hive",
+  "limitations": [
+    "数据仅来自 Hive farm.env_daily 的日统计；同日重复记录按各指标有效值求日均值，窗口统计按日等权，不按原始行数加权。",
+    "first 和 last 分别指窗口起始日和目标日的日均值；端点缺失时保留空值，change 仅在两端均有效时计算。",
+    "缺失值及非有限数值不按 0 处理；有限异常值未自动裁剪或做农艺校准，解释前应核查传感器与采样方法。",
+    "保留原始单位 lux、dS/m、ppm；照度不等于日照时长，氮磷钾浓度不直接换算施肥用量。",
+    "窗口仅含截至目标日期的观测，无未来天气预报、降雨或日照时长数据。",
+    "11 项环境指标本身不含实测病虫数量或发病率；病虫害信息另列，环境风险线索不能单独作确诊。",
+    "11 项环境指标本身不含产量基线和实收数据；旧表产量基线另列，不能将基线直接视为本次预测或实际收获产量。",
+    "分析建议仅供人工研判，不是设备命令，不自动执行喷药、开灯或其他硬件操作。",
+    "窗口有 1 天没有 Hive 记录，历史覆盖不完整。",
+    "11 项指标存在缺测日，各项统计有效日数可能不同。",
+    "生长周期为 孕穗期，读取自 farm.env_daily 目标日期当天的 growth_stage 字段。"
+  ],
+  "legacyContext": {
+    "source": "inspection_and_hive_yield",
+    "stationId": "S03",
+    "pestDisease": {
+      "available": true,
+      "source": "inspection_diagnosis",
+      "sourceTable": "inspection_diagnosis",
+      "stationId": "S03",
+      "referenceDate": "2026-09-15",
+      "lastDiagnosedAt": "2026-09-15T09:42:18.512Z",
+      "recognitionCount": 5,
+      "items": [
+        {
+          "key": "bacterial_leaf_blight",
+          "category": "disease",
+          "label": "细菌性叶枯病",
+          "unit": "次",
+          "value": 2,
+          "alertLevel": "red"
+        },
+        {
+          "key": "brown_spot",
+          "category": "disease",
+          "label": "褐斑病",
+          "unit": "次",
+          "value": 0,
+          "alertLevel": "green"
+        },
+        {
+          "key": "tungro_virus",
+          "category": "disease",
+          "label": "东格鲁病毒",
+          "unit": "次",
+          "value": 0,
+          "alertLevel": "green"
+        },
+        {
+          "key": "rice_planthopper",
+          "category": "pest",
+          "label": "稻飞虱",
+          "unit": "只",
+          "value": 3,
+          "alertLevel": "red"
+        },
+        {
+          "key": "striped_stem_borer",
+          "category": "pest",
+          "label": "二化螟",
+          "unit": "只",
+          "value": 1,
+          "alertLevel": "yellow"
+        },
+        {
+          "key": "rice_leaf_roller",
+          "category": "pest",
+          "label": "稻纵卷叶螟",
+          "unit": "只",
+          "value": 0,
+          "alertLevel": "green"
+        }
+      ],
+      "notes": []
+    },
+    "yield": {
+      "available": true,
+      "sourceTable": "farm.rice_yield",
+      "referenceYear": 2024,
+      "season": "firstcrop",
+      "matchType": "latest_prior",
+      "baselineKgPerMu": 548.6
+    },
+    "limitations": [
+      "病虫害仅统计目标日期当天的田间巡检识别记录；往期日期没有巡检记录可统计。",
+      "产量基线沿用旧版 Hive 表，保留原有年份与口径，不等于实际收获产量或本次预测结果。",
+      "产量引用旧表列 firstcrop_2024，年份 2024，口径为第一季基线 kg/亩。"
+    ]
+  }
+}

@@ -48,7 +48,7 @@ class HiveHistoryRepositoryTests {
 	}
 
 	@Test
-	void rangeCountsActualDaysAndBindsStationAndDateThenClosesResources() throws Exception {
+	void rangeReadsPartitionsCountsDistinctDaysDropsFutureOnesThenClosesResources() throws Exception {
 		HiveConnectionFactory connections = mock(HiveConnectionFactory.class);
 		Connection connection = mock(Connection.class);
 		PreparedStatement statement = mock(PreparedStatement.class);
@@ -57,16 +57,35 @@ class HiveHistoryRepositoryTests {
 		when(connections.queryTimeoutSeconds()).thenReturn(30);
 		when(connection.prepareStatement(HiveHistoryRepository.RANGE_SQL)).thenReturn(statement);
 		when(statement.executeQuery()).thenReturn(rows);
-		when(rows.next()).thenReturn(true, true, true, false);
-		when(rows.getString("record_date")).thenReturn("2020-01-02", "2020-01-01", "2020-01-01");
+		when(rows.next()).thenReturn(true, true, true, true, false);
+		// The last specification is later than the requested day and must not widen the reported range.
+		when(rows.getString(1)).thenReturn("date=2020-01-02", "date=2020-01-01", "date=2020-01-01", "date=2026-09-12");
 		var result = new HiveHistoryRepository(connections).range("S01", LocalDate.of(2026, 9, 11)).orElseThrow();
+		assertThat(result.stationId()).isEqualTo("S01");
+		assertThat(result.startDate()).isEqualTo(LocalDate.of(2020, 1, 1));
+		assertThat(result.endDate()).isEqualTo(LocalDate.of(2020, 1, 2));
 		assertThat(result.recordCount()).isEqualTo(2);
-		verify(statement).setString(1, "point_1");
-		verify(statement).setString(2, "2026-09-11");
 		verify(statement).setQueryTimeout(30);
 		verify(rows).close();
 		verify(statement).close();
 		verify(connection).close();
+	}
+
+	@Test
+	void rangeRejectsAnUnexpectedPartitionSpecification() throws Exception {
+		HiveConnectionFactory connections = mock(HiveConnectionFactory.class);
+		Connection connection = mock(Connection.class);
+		PreparedStatement statement = mock(PreparedStatement.class);
+		ResultSet rows = mock(ResultSet.class);
+		when(connections.open()).thenReturn(connection);
+		when(connections.queryTimeoutSeconds()).thenReturn(30);
+		when(connection.prepareStatement(HiveHistoryRepository.RANGE_SQL)).thenReturn(statement);
+		when(statement.executeQuery()).thenReturn(rows);
+		when(rows.next()).thenReturn(true, false);
+		when(rows.getString(1)).thenReturn("station=point_1");
+		var repository = new HiveHistoryRepository(connections);
+		assertThatThrownBy(() -> repository.range("S01", LocalDate.of(2026, 9, 11)))
+			.isInstanceOf(SQLException.class);
 	}
 
 	@Test

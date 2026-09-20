@@ -27,8 +27,12 @@ public class HiveHistoryRepository {
 	// turn every lookup into a full scan. readDate still rejects any value that is not a padded date.
 	private static final String DAY = "`date`";
 	// Projection/filter queries avoid launching a cluster aggregation for each UI interaction.
-	static final String RANGE_SQL = "SELECT " + DAY + " AS record_date FROM " + TABLE
-		+ " WHERE " + STATION_FILTER + " AND " + DAY + " <= ?";
+	// The range comes from the metastore, not the data: `date` is the only partition column and every
+	// partition holds exactly one row per station, so the partition list already answers this question.
+	// Reading the column out of the files instead costs about 7ms per partition — over 18s across 2457 of
+	// them — and rewriting it as MIN/MAX/COUNT is far worse still, because that launches a MapReduce job.
+	static final String RANGE_SQL = "SHOW PARTITIONS " + TABLE;
+	private static final String PARTITION_PREFIX = "date=";
 	private static final List<String> METRICS = List.of("light_lux", "temperature_celsius", "humidity_percent",
 		"wind_speed_m_s", "soil_temperature_celsius", "soil_moisture_percent", "ph",
 		"electrical_conductivity_ds_m", "nitrogen_concentration_ppm", "phosphorus_concentration_ppm",
@@ -43,17 +47,40 @@ public class HiveHistoryRepository {
 		this.connections = connections;
 	}
 
+	/**
+	 * The partition list is shared by every station, so {@code stationId} is validated and echoed back but
+	 * no longer narrows the result. That holds only while each partition keeps one row per station; a
+	 * station that ever stops reporting would still be given the table-wide range.
+	 */
 	public Optional<HistoryRangeResponse> range(String stationId, LocalDate today) throws SQLException {
+		toHiveStation(stationId);
 		try (Connection connection = connections.open();
 				PreparedStatement statement = connection.prepareStatement(RANGE_SQL)) {
-			configure(statement, stationId);
-			statement.setString(2, today.toString());
+			statement.setQueryTimeout(connections.queryTimeoutSeconds());
+			statement.setFetchSize(1000);
 			try (ResultSet rows = statement.executeQuery()) {
 				TreeSet<LocalDate> days = new TreeSet<>();
-				while (rows.next()) days.add(readDate(rows, "record_date"));
+				while (rows.next()) {
+					LocalDate day = readPartitionDate(rows);
+					if (!day.isAfter(today)) days.add(day);
+				}
 				if (days.isEmpty()) return Optional.empty();
 				return Optional.of(new HistoryRangeResponse(stationId, days.first(), days.last(), days.size()));
 			}
+		}
+	}
+
+	/** SHOW PARTITIONS answers with one {@code date=YYYY-MM-DD} specification per row, in a single column. */
+	private static LocalDate readPartitionDate(ResultSet rows) throws SQLException {
+		String value = rows.getString(1);
+		String specification = value == null ? "" : value.trim();
+		if (!specification.startsWith(PARTITION_PREFIX)) {
+			throw new SQLException("Hive returned an unexpected partition specification", "22007");
+		}
+		try {
+			return LocalDate.parse(specification.substring(PARTITION_PREFIX.length()));
+		} catch (RuntimeException ex) {
+			throw new SQLException("Hive returned an invalid partition date", "22007");
 		}
 	}
 

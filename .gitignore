@@ -58,3 +58,9 @@ coverage/
 integrations/*.zip
 !integrations/astrbot_plugin_agri_control.zip
 !integrations/astrbot_plugin_agri_query.zip
+
+# Demo
+demo/
+
+# test text
+dify-text/

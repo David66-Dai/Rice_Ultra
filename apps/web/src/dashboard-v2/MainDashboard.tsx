@@ -18,7 +18,7 @@ const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四
 const NAV_ITEMS = [
   { id: 'home', label: '首页', code: 'OVERVIEW' },
   { id: 'inspection', label: '田间巡检', code: 'INSPECTION' },
-  { id: 'environment', label: '环境检测', code: 'ENVIRONMENT' },
+  { id: 'environment', label: '环境监测', code: 'ENVIRONMENT' },
   { id: 'analysis', label: '决策推演', code: 'ANALYSIS' },
   { id: 'history', label: '历史数据', code: 'HISTORY' },
   { id: 'devices', label: '设备管理', code: 'DEVICES' },
