@@ -254,7 +254,6 @@ export function FieldInspection() {
   )
   const stationOnline = canDiagnoseStation(station.id)
   const alert = byId[station.id]
-  const stationLevel = stationVisualLevel(stationOnline, alert?.alertLevel)
   const liveFeed = stationId === LIVE_STATION_ID
   const cameraSupported = Boolean(navigator.mediaDevices?.getUserMedia)
   const networkCamera = networkCameras.find((item) => item.id === networkCameraId)
@@ -975,7 +974,7 @@ export function FieldInspection() {
                   <polyline points={hyperspectral.polyline} />
                 </svg>
                 <div className="recognition-progress"><i style={{ width: `${hyperspectral.confidence}%` }} /></div>
-                <p>{hsiError ?? hyperspectral.detail}</p>
+                {(hsiError ?? hyperspectral.detail) && <p>{hsiError ?? hyperspectral.detail}</p>}
               </div>
               <button
                 type="button"
