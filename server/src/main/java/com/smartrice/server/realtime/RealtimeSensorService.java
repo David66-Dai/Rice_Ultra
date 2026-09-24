@@ -3,6 +3,7 @@ package com.smartrice.server.realtime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
@@ -45,7 +46,32 @@ public class RealtimeSensorService {
 			));
 	}
 
-	private static String validateStation(String stationId) {
+	/**
+	 * Tells whether the caller already holds the newest sample. {@code after} is the
+	 * {@code sampledAt} of the reading it last rendered, echoed back untouched.
+	 */
+	public boolean unchanged(String stationId, String after) {
+		if (after == null) {
+			return false;
+		}
+		String normalizedStation = validateStation(stationId);
+		Instant cursor = after.isBlank() ? null : parseCursor(after);
+		Instant latest = repository.findFirstByStationIdOrderBySampledAtDesc(normalizedStation)
+			.map(reading -> reading.sampledAt)
+			.orElse(null);
+		return cursor == null ? latest == null : cursor.equals(latest);
+	}
+
+	private static Instant parseCursor(String after) {
+		try {
+			return Instant.parse(after);
+		}
+		catch (DateTimeParseException ex) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "after 必须为上次返回的采样时间");
+		}
+	}
+
+	static String validateStation(String stationId) {
 		String normalized = stationId == null ? "" : stationId.trim().toUpperCase();
 		if (!STATION_ID.matcher(normalized).matches()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "stationId 必须为 S01-S10");

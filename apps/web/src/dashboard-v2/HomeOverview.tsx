@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { RealtimeSensorReading, StationAlertLevel } from '@smart-rice-security/shared'
 import riceArea from '../assets/rice_area.png'
 import { useAuth } from '../auth/useAuth.ts'
-import { REALTIME_SYNC_INTERVAL_MS } from '../lib/realtime'
+import { watchRealtime } from '../lib/realtime.ts'
 import { stationLevelLabel, stationPointClass } from '../lib/station-alerts.ts'
 import { useStationAlerts } from './useStationAlerts.ts'
 import './HomeOverview.css'
@@ -92,30 +92,16 @@ export function HomeOverview() {
 
   useEffect(() => {
     if (selectedId !== 'S01') return
-    let cancelled = false
-    let inFlight = false
-    const controller = new AbortController()
-
-    function loadLatest() {
-      if (cancelled || inFlight) return
-      inFlight = true
-      auth.request<RealtimeSensorReading>('/api/realtime/latest?stationId=S01', { signal: controller.signal })
-        .then((reading) => {
-          if (!cancelled) setLatest(reading)
-        })
-        .catch(() => {
-          // 串口尚未形成完整数据帧时保持空值
-        })
-        .finally(() => { inFlight = false })
-    }
-
-    loadLatest()
-    const timer = window.setInterval(loadLatest, REALTIME_SYNC_INTERVAL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-      controller.abort()
-    }
+    return watchRealtime<RealtimeSensorReading>(
+      auth.request,
+      '/api/realtime/latest?stationId=S01',
+      (reading) => reading.sampledAt,
+      {
+        onData: setLatest,
+        // 串口尚未形成完整数据帧时保持空值
+        onError: () => {},
+      },
+    )
   }, [auth, selectedId])
 
   function selectStation(station: Station) {

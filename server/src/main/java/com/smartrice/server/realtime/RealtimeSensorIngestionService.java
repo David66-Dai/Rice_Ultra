@@ -41,6 +41,7 @@ public class RealtimeSensorIngestionService {
 			pending.save(sample);
 		}
 		events.publishEvent(new WindReadingEvent(reading.stationId, reading.windSpeedMs, reading.sampledAt));
+		events.publishEvent(new RealtimeReadingEvent(reading.stationId, reading.sampledAt));
 	}
 
 	String payload(RealtimeSensorReading reading) {
