@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimeSensorReading, RealtimeTodayResponse } from '@smart-rice-security/shared'
 import { useAuth } from '../auth/useAuth.ts'
 import { describeError } from '../lib/api.ts'
-import { REALTIME_SYNC_INTERVAL_MS } from '../lib/realtime'
+import { watchRealtime } from '../lib/realtime.ts'
 import {
   ProfessionalRealtimeChart,
 } from './ProfessionalRealtimeCharts.tsx'
@@ -121,35 +121,22 @@ export function EnvironmentAnalysis() {
 
   useEffect(() => {
     if (!selectedStation.online) return
-    let cancelled = false
-    let inFlight = false
-    const controller = new AbortController()
-
-    function loadToday() {
-      if (cancelled || inFlight) return
-      inFlight = true
-      auth.request<RealtimeTodayResponse>(`/api/realtime/today?stationId=${selectedStationId}`, { signal: controller.signal })
-        .then((response) => {
-          if (cancelled) return
+    return watchRealtime<RealtimeTodayResponse>(
+      auth.request,
+      `/api/realtime/today?stationId=${selectedStationId}`,
+      (response) => response.readings.at(-1)?.sampledAt ?? '',
+      {
+        onData: (response) => {
           setReadings(response.readings)
           setLoading(false)
           setError(null)
-        })
-        .catch((requestError: unknown) => {
-          if (cancelled) return
+        },
+        onError: (requestError) => {
           setLoading(false)
           setError(describeError(requestError))
-        })
-        .finally(() => { inFlight = false })
-    }
-
-    loadToday()
-    const timer = window.setInterval(loadToday, REALTIME_SYNC_INTERVAL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-      controller.abort()
-    }
+        },
+      },
+    )
   }, [auth, retryKey, selectedStation.online, selectedStationId])
 
   function move(direction: -1 | 1) {
