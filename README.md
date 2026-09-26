@@ -95,10 +95,10 @@ Java 保留 Spring 的环境变量/命令行覆盖。常用环境变量包括
 
 ## 启动
 
-### 1. 独立 App（优先）
+### 1. 独立 App
 
 ```bash
-npm run mobile
+没开发
 ```
 
 扫码用 Expo Go 打开，或按终端提示开 Android 模拟器。
@@ -409,22 +409,6 @@ Remove-Item Env:RICE_HDFS_REPORT_LIVE_TEST
 HDFS 写入采用 [Apache WebHDFS 官方协议](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html)
 的两阶段 CREATE 和 RENAME；Java 直接请求 NameNode 与其返回的 DataNode，无需在后端引入 Hadoop 全套依赖。
 
-## 当前状态
-
-- [X] Monorepo 骨架与脚本
-- [X] Expo 独立 App 启动页
-- [X] React Web 登录页（记住密码 / 自动登录）
-- [X] Spring Boot API + CORS + 诊断转发占位
-- [X] 账号密码登录、JWT 鉴权、记住登录令牌、账号锁定（MySQL `smart_rice_security`）
-- [X] S01–S10 Hive 历史日数据、JWT API 与 Web 时间轴溯源
-- [X] 新环境表 + 旧病虫害/产量表 → Dify 四份报告 → 大屏决策推演
-- [X] Inference stub
-- [ ] 接入 ResNet18 / YOLO 真实推理
-- [ ] 站点监测、告警、看板业务
-
-## 图片来源
-
-- `apps/web/src/assets/rice_blast.jpg`：Donald Groth / Louisiana State University AgCenter / USDA Forest Service，来自 Wikimedia Commons，Public Domain。
 
 ### Redis 实时同步
 
