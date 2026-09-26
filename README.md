@@ -1,4 +1,4 @@
-# 🌾 数智稻安 — 大数据驱动下基于大模型的水稻农田智能监测预警平台
+# 🌾 数智稻安 — 特色稻高光谱智能植保联动系统
 
 Monorepo：**React 网页 + Expo 独立 App + Java 后端 + MySQL + Hive 历史库 + Python 推理**。
 
